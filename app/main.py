@@ -26,6 +26,8 @@ class ChatResp(BaseModel):
     answer: str
 @app.post("/chat",response_model=ChatResp)
 async def chat(req: ChatReq):
+    # req.model_dump()，将请求对象转化为字典格式
+    # 将字典数据输入到图中，之后就按照图定义的结构开始执行并返回最终结果
     out = router_graph.invoke(req.model_dump())
 
     return {"answer": out["answer"]}
