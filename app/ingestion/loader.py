@@ -39,8 +39,8 @@ def load_docs(dir_path: str) -> List[Document]:
 def split_docs(docs: List[Document]) -> List[Document]:
     #  RecursiveCharacterTextSplitter 是 LangChain 框架中的一个文本分割器
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap
+        chunk_size=settings.chunk_size,         # 每个块的最大字符数
+        chunk_overlap=settings.chunk_overlap    # 块之间的重叠字符数
     )
     return splitter.split_documents(docs)
 

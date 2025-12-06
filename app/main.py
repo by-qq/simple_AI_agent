@@ -67,7 +67,11 @@ async def ingest(
     chunks = split_with_visibility(docs, visibility=visibility, doc_id=doc_id)
 
     vs = get_vs()
-    vs.add_documents(chunks)
+    # 由于智谱AIinput数组最大不得超过64条，一块代表一条数据
+    # vs.add_documents(chunks)
+    for i in range(0, len(chunks), 64):
+        vs.add_documents(chunks[i:i + 64])
+
     try:
         vs.persist()
     except Exception:
