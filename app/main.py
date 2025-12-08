@@ -1,4 +1,5 @@
-# from __future__ import annotations
+from __future__ import annotations
+
 from app.deps import get_vs
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
 from app.config import settings
@@ -15,22 +16,40 @@ app = FastAPI(title="Enterprise KB Assistant")
 
 DATA_DOCS_DIR = Path("./data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
+SESSIONS: dict[str, str] = {}       # 后期使用redis进行存储
+
 
 # 这个类继承自BaseModel，转化成json
 class ChatReq(BaseModel):
     text: str
     user_role: str = "public"
     requester: str = "anonymous"
+    session_id: Optional[str] = None  # 通过这一行给大模型添加记忆
 
 class ChatResp(BaseModel):
     answer: str
+
+
 @app.post("/chat",response_model=ChatResp)
 async def chat(req: ChatReq):
     # req.model_dump()，将请求对象转化为字典格式
     # 将字典数据输入到图中，之后就按照图定义的结构开始执行并返回最终结果
-    out = router_graph.invoke(req.model_dump())
+    # out = router_graph.invoke(req.model_dump())
+    # return {"answer": out["answer"]}
+    payload = req.model_dump()
+    sid = payload.get("session_id")
 
-    return {"answer": out["answer"]}
+    if sid and sid in SESSIONS:
+        prev = SESSIONS[sid]
+        merged = {**prev, **payload}
+        merged["text"] = payload.get("text")
+        payload = merged
+
+    out = router_graph.invoke(payload)
+    if sid:
+        SESSIONS[sid] = {**payload, **out}
+
+    return {"answer":out["answer"]}
 
 @app.post("/ingest")
 async def ingest(
