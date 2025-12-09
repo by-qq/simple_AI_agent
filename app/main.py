@@ -20,9 +20,8 @@ app = FastAPI(title="Enterprise KB Assistant")
 DATA_DOCS_DIR = Path("./data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
 # SESSIONS: dict[str, str] = {}       # 后期使用redis进行存储
-# 1. 连接到Redis服务器
-# 如果Redis有密码，需添加参数 password='yourpassword'
-redis0 = redis.asyncio.Redis(host='localhost', port=6379, db=0)
+# 连接到Redis服务器，如果Redis有密码，需添加参数 password='yourpassword'
+redis0 = redis.Redis(host='localhost', port=6379, db=0)
 
 
 # 这个类继承自BaseModel，转化成json
@@ -37,25 +36,23 @@ class ChatResp(BaseModel):
 
 
 @app.post("/chat",response_model=ChatResp)
-async def chat(req: ChatReq):
+def chat(req: ChatReq):
     # req.model_dump()，将请求对象转化为字典格式
     # 将字典数据输入到图中，之后就按照图定义的结构开始执行并返回最终结果
     # out = router_graph.invoke(req.model_dump())
     # return {"answer": out["answer"]}
     payload = req.model_dump()
     sid = payload.get("session_id")
-
-    if sid:
-        if await redis0.exists(sid):
-            prev = await redis0.get(sid)
-            prev_dict = json.loads(prev)
-            merged = {**prev_dict, **payload, "text": payload.get("text")}
-            payload = merged
+    prev = redis0.get(sid)
+    if sid and prev:
+        prev_dict = json.loads(prev)
+        merged = {**prev_dict, **payload, "text": payload.get("text")}
+        payload = merged
 
     out = router_graph.invoke(payload)
     value = json.dumps({**payload, **out}, ensure_ascii=False)
     if sid:
-        await redis0.set(sid, value)
+        redis0.set(sid, value)
 
     return {"answer":out["answer"]}
 
