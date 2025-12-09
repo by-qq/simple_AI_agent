@@ -10,7 +10,7 @@
 # 现在是一个最小可用版本，只实现了Q&A路由
 from typing import TypedDict, Any
 from langgraph.graph import StateGraph, START, END
-from app.rag.qa_graph import build_qa_graph
+from app.workflows.rag.qa_graph import build_qa_graph
 from app.workflows.leave.leave_graph import build_leave_graph
 
 # 这个模型能够存储路由的状态
