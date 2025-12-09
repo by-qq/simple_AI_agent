@@ -33,7 +33,7 @@ def validate_leave(req: Dict[str,Any], balance_days:float=5.0) ->Tuple[List[str]
     leave_type = req.get("leave_type")
     if leave_type =="annual":
         if duration > balance_days:
-            violations.append("余额不足")
+            violations.append("假期余额不足")
         if start < datetime.now() + timedelta(days=1):
             violations.append("年假需要至少提前一个工作日提交")
 
