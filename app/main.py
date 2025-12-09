@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.deps import get_vs
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
 from app.config import settings
@@ -8,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 import chromadb
+import redis
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
@@ -16,7 +19,10 @@ app = FastAPI(title="Enterprise KB Assistant")
 
 DATA_DOCS_DIR = Path("./data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
-SESSIONS: dict[str, str] = {}       # 后期使用redis进行存储
+# SESSIONS: dict[str, str] = {}       # 后期使用redis进行存储
+# 1. 连接到Redis服务器
+# 如果Redis有密码，需添加参数 password='yourpassword'
+redis0 = redis.asyncio.Redis(host='localhost', port=6379, db=0)
 
 
 # 这个类继承自BaseModel，转化成json
@@ -39,15 +45,17 @@ async def chat(req: ChatReq):
     payload = req.model_dump()
     sid = payload.get("session_id")
 
-    if sid and sid in SESSIONS:
-        prev = SESSIONS[sid]
-        merged = {**prev, **payload}
-        merged["text"] = payload.get("text")
-        payload = merged
+    if sid:
+        if await redis0.exists(sid):
+            prev = await redis0.get(sid)
+            prev_dict = json.loads(prev)
+            merged = {**prev_dict, **payload, "text": payload.get("text")}
+            payload = merged
 
     out = router_graph.invoke(payload)
+    value = json.dumps({**payload, **out}, ensure_ascii=False)
     if sid:
-        SESSIONS[sid] = {**payload, **out}
+        await redis0.set(sid, value)
 
     return {"answer":out["answer"]}
 
