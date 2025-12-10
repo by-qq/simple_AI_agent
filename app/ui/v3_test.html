@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>请假系统调试面板</title>
+  <style>
+    :root {
+      --bg: #050b1a;
+      --bg-card: #0b1830;
+      --bg-input: #101f3d;
+      --border: #1f3b70;
+      --accent: #3a8dff;
+      --accent-soft: rgba(58, 141, 255, 0.25);
+      --text: #e5ecff;
+      --text-muted: #9bb0ff;
+      --danger: #ff5c7a;
+      --success: #3ad29f;
+      --shadow-soft: 0 20px 40px rgba(0, 0, 0, 0.55);
+      --radius-lg: 16px;
+      --radius-md: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui,
+        "Segoe UI", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #172a4d 0, #020410 60%);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 960px;
+      background: linear-gradient(135deg, #050b1a 0, #080f24 40%, #020410 100%);
+      border-radius: 24px;
+      box-shadow: var(--shadow-soft);
+      border: 1px solid rgba(91, 133, 255, 0.25);
+      padding: 24px 26px 22px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .app::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      background: radial-gradient(circle at 10% 0, rgba(58, 141, 255, 0.18), transparent 55%),
+                  radial-gradient(circle at 90% 100%, rgba(111, 66, 193, 0.22), transparent 55%);
+      opacity: 0.85;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .title-pill {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(127, 178, 255, 0.6);
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .connection-status {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(58, 141, 255, 0.7);
+      background: linear-gradient(135deg, rgba(58, 141, 255, 0.3), rgba(2, 4, 16, 0.4));
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(58, 210, 159, 0.7);
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
+      gap: 16px;
+    }
+
+    .card {
+      background: radial-gradient(circle at top left, rgba(58, 141, 255, 0.08), transparent 55%),
+                  radial-gradient(circle at bottom right, rgba(21, 128, 251, 0.05), transparent 60%),
+                  var(--bg-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      padding: 14px 14px 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .card-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      font-size: 10px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(156, 172, 255, 0.6);
+      color: var(--text-muted);
+      backdrop-filter: blur(10px);
+      background: radial-gradient(circle at top, rgba(36, 99, 235, 0.4), rgba(5, 11, 26, 0.6));
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(79, 109, 180, 0.9);
+      background: radial-gradient(circle at top, rgba(22, 46, 97, 0.8), rgba(11, 24, 48, 0.95));
+      color: var(--text);
+      padding: 7px 9px;
+      font-size: 13px;
+      outline: none;
+      resize: vertical;
+      min-height: 32px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+    }
+
+    textarea {
+      min-height: 70px;
+      max-height: 200px;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: rgba(155, 176, 255, 0.6);
+      font-size: 12px;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(58, 141, 255, 0.4);
+      background: radial-gradient(circle at top, rgba(32, 66, 135, 0.9), rgba(13, 28, 57, 0.98));
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    button {
+      border-radius: 999px;
+      border: none;
+      padding: 6px 11px;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #f9fbff;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.45);
+      transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, background 0.12s ease-out;
+    }
+
+    button.secondary {
+      background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.4), rgba(15, 23, 42, 0.9));
+      border: 1px solid rgba(96, 165, 250, 0.6);
+      box-shadow: 0 6px 12px rgba(15, 23, 42, 0.7);
+      color: var(--text);
+    }
+
+    button.danger {
+      background: linear-gradient(135deg, #e11d48, #b91c1c);
+      border: 1px solid rgba(248, 113, 113, 0.8);
+      box-shadow: 0 8px 18px rgba(248, 113, 113, 0.5);
+    }
+
+    button.small {
+      padding: 4px 9px;
+      font-size: 11px;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.65);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.9);
+    }
+
+    .pill {
+      font-size: 10px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 255, 0.7);
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pill span.dot {
+      width: 5px;
+      height: 5px;
+    }
+
+    .logs {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+
+    .log-card {
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.98));
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(55, 65, 106, 0.9);
+      padding: 8px 10px 8px;
+      font-size: 12px;
+      min-height: 120px;
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .log-title {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-family: "JetBrains Mono", Menlo, Monaco, Consolas, "Courier New",
+        monospace;
+      font-size: 11px;
+      color: #dbeafe;
+    }
+
+    .timestamp {
+      font-size: 10px;
+      color: rgba(148, 163, 255, 0.8);
+    }
+
+    .footer {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      border-top: 1px solid rgba(51, 65, 117, 0.8);
+      padding-top: 6px;
+    }
+
+    .footer-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .label-inline {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .url-input {
+      font-size: 11px;
+      padding: 4px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(71, 85, 158, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text);
+      outline: none;
+      min-width: 260px;
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        padding: 16px 14px 14px;
+      }
+      .main-grid,
+      .logs {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 520px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .footer {
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+      }
+      .footer-right {
+        flex-wrap: wrap;
+      }
+      .url-input {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div>
+        <div class="title">
+          请假聊天 · 调试面板
+          <span class="title-pill">Local · 127.0.0.1:8002</span>
+        </div>
+        <div class="subtitle">一键调用 4 种典型接口：申请 · 确认 · 查询 · 取消</div>
+      </div>
+      <div class="connection-status">
+        <span class="dot"></span>
+        Ready to send
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <!-- 左侧：输入区域 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">请求构造</div>
+            <div class="card-subtitle">可以自定义 text / session / 请求人</div>
+          </div>
+          <span class="badge">POST /chat · JSON</span>
+        </div>
+
+        <div>
+          <label for="text">消息内容 text</label>
+          <textarea id="text" placeholder="例如：我下周二想请一天年假"></textarea>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="sessionId">session_id</label>
+            <input
+              type="text"
+              id="sessionId"
+              placeholder="例如：s3（可留空）"
+              value="s3"
+            />
+          </div>
+          <div>
+            <label for="requester">requester</label>
+            <input
+              type="text"
+              id="requester"
+              placeholder="例如：peter"
+              value="peter"
+            />
+          </div>
+          <div>
+            <label for="userRole">user_role</label>
+            <input
+              type="text"
+              id="userRole"
+              placeholder="例如：public"
+              value="public"
+            />
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div>
+            <label for="leaveId">请假单号（用于查询 / 取消）</label>
+            <input
+              type="text"
+              id="leaveId"
+              placeholder="例如：LV-32bd2433"
+            />
+          </div>
+          <div style="display:flex;align-items:flex-end;justify-content:flex-end;">
+            <button id="sendCustomBtn">
+              ▶ 发送当前内容
+            </button>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="secondary small" id="demoApplyBtn">
+            🌙 示例：申请下周二年假
+          </button>
+          <button class="secondary small" id="demoConfirmBtn">
+            ✅ 示例：确认
+          </button>
+          <button class="secondary small" id="demoQueryBtn">
+            🔍 查询该请假状态
+          </button>
+          <button class="danger small" id="demoCancelBtn">
+            ⛔ 取消该请假申请
+          </button>
+        </div>
+      </div>
+
+      <!-- 右侧：请求 & 响应日志 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">请求 / 响应</div>
+            <div class="card-subtitle">便于调试后端返回结果</div>
+          </div>
+          <span class="pill">
+            <span class="dot"></span>
+            JSON Viewer
+          </span>
+        </div>
+
+        <div class="logs">
+          <div class="log-card">
+            <div class="log-title">
+              <span>Request Payload</span>
+              <span class="timestamp" id="reqTime"></span>
+            </div>
+            <pre id="requestLog">{}</pre>
+          </div>
+          <div class="log-card">
+            <div class="log-title">
+              <span>Response</span>
+              <span class="timestamp" id="resTime"></span>
+            </div>
+            <pre id="responseLog">等待发送请求……</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>提示：如果浏览器控制台报 <code>CORS</code> 错误，需要在后端开启跨域。</div>
+      <div class="footer-right">
+        <span class="label-inline">接口地址：</span>
+        <input
+          type="text"
+          id="baseUrl"
+          class="url-input"
+          value="http://127.0.0.1:8002/chat"
+        />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const textEl = document.getElementById("text");
+    const sessionEl = document.getElementById("sessionId");
+    const requesterEl = document.getElementById("requester");
+    const userRoleEl = document.getElementById("userRole");
+    const leaveIdEl = document.getElementById("leaveId");
+    const baseUrlEl = document.getElementById("baseUrl");
+
+    const requestLogEl = document.getElementById("requestLog");
+    const responseLogEl = document.getElementById("responseLog");
+    const reqTimeEl = document.getElementById("reqTime");
+    const resTimeEl = document.getElementById("resTime");
+
+    const sendCustomBtn = document.getElementById("sendCustomBtn");
+    const demoApplyBtn = document.getElementById("demoApplyBtn");
+    const demoConfirmBtn = document.getElementById("demoConfirmBtn");
+    const demoQueryBtn = document.getElementById("demoQueryBtn");
+    const demoCancelBtn = document.getElementById("demoCancelBtn");
+
+    function nowTime() {
+      const d = new Date();
+      return d.toLocaleTimeString();
+    }
+
+    function buildBasePayload() {
+      const payload = {
+        text: textEl.value.trim(),
+        user_role: userRoleEl.value.trim() || "public",
+        requester: requesterEl.value.trim() || "peter",
+      };
+      const sessionId = sessionEl.value.trim();
+      if (sessionId) {
+        payload.session_id = sessionId;
+      }
+      return payload;
+    }
+
+    async function sendRequest(payload, remark) {
+      const url = baseUrlEl.value.trim() || "http://127.0.0.1:8002/chat";
+
+      requestLogEl.textContent = JSON.stringify(
+        { remark, url, ...payload },
+        null,
+        2
+      );
+      reqTimeEl.textContent = nowTime();
+      responseLogEl.textContent = "发送中……";
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const text = await res.text();
+        resTimeEl.textContent = nowTime();
+
+        try {
+          const json = JSON.parse(text);
+          responseLogEl.textContent = JSON.stringify(json, null, 2);
+        } catch (e) {
+          responseLogEl.textContent =
+            "非 JSON 响应（原始文本）：\n\n" + text;
+        }
+      } catch (err) {
+        resTimeEl.textContent = nowTime();
+        responseLogEl.textContent =
+          "请求失败：\n" + (err && err.message ? err.message : String(err));
+      }
+    }
+
+    // 发送自定义内容
+    sendCustomBtn.addEventListener("click", () => {
+      const payload = buildBasePayload();
+      if (!payload.text) {
+        alert("请先输入 text 内容");
+        return;
+      }
+      sendRequest(payload, "手动构造请求");
+    });
+
+    // 示例 1：我下周二想请一天年假
+    demoApplyBtn.addEventListener("click", () => {
+      textEl.value = "我下周二想请一天年假";
+      const base = buildBasePayload();
+      base.text = "我下周二想请一天年假";
+      // 原示例有 session_id: "s3"，这里会自动带上
+      sendRequest(base, "示例：申请下周二一天年假");
+    });
+
+    // 示例 2：确认
+    demoConfirmBtn.addEventListener("click", () => {
+      textEl.value = "确认";
+      const base = buildBasePayload();
+      base.text = "确认";
+      sendRequest(base, "示例：确认");
+    });
+
+    // 示例 3：查我的请假状态 LV-xxxx
+    demoQueryBtn.addEventListener("click", () => {
+      const id = leaveIdEl.value.trim();
+      if (!id) {
+        alert("请先在『请假单号』输入框里填一个 ID，例如：LV-32bd2433");
+        return;
+      }
+      textEl.value = `查我的请假状态 ${id}`;
+      const payload = {
+        text: `查我的请假状态 ${id}`,
+        user_role: userRoleEl.value.trim() || "public",
+        requester: requesterEl.value.trim() || "peter",
+      };
+      // 按你原始示例，这里不带 session_id
+      sendRequest(payload, "示例：查询请假状态");
+    });
+
+    // 示例 4：取消请假申请 LV-xxxx
+    demoCancelBtn.addEventListener("click", () => {
+      const id = leaveIdEl.value.trim();
+      if (!id) {
+        alert("请先在『请假单号』输入框里填一个 ID，例如：LV-32bd2433");
+        return;
+      }
+      textEl.value = `取消请假申请 ${id}`;
+      const payload = {
+        text: `取消请假申请 ${id}`,
+        user_role: userRoleEl.value.trim() || "public",
+        requester: requesterEl.value.trim() || "peter",
+      };
+      sendRequest(payload, "示例：取消请假申请");
+    });
+  </script>
+</body>
+</html>
