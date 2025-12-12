@@ -1,20 +1,16 @@
 # 处理请假工单数据库的操作
-import os
+
 import pymysql
 from contextlib import contextmanager
+from app.config import settings
 
-MYSQL_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
-MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
-MYSQL_USER = os.getenv("MYSQL_USER", "tom")
-MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "123456")
-MYSQL_DB = os.getenv("MYSQL_DB", "enterprise_kb")
 
 @contextmanager
 def get_conn():
     conn = pymysql.connect(
-        host=MYSQL_HOST, port=MYSQL_PORT,
-        user=MYSQL_USER, password=MYSQL_PASSWORD,
-        database=MYSQL_DB, charset="utf8mb4",
+        host=settings.MYSQL_HOST, port=settings.MYSQL_PORT,
+        user=settings.MYSQL_USER, password=settings.MYSQL_PASSWORD,
+        database=settings.MYSQL_DB, charset="utf8mb4",
         autocommit=True,
         cursorclass=pymysql.cursors.DictCursor,
     )
