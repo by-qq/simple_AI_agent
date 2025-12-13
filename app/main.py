@@ -27,7 +27,6 @@ app.add_middleware(
 
 DATA_DOCS_DIR = Path("./data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
-SESSIONS: dict[str, str] = {}       # 后期使用redis进行存储
 
 
 # 这个类继承自BaseModel，转化成json
@@ -63,8 +62,7 @@ async def chat(req: ChatReq):
 
     new_state = {**payload,**out}
     save_session(sid,new_state)
-    if sid:
-        SESSIONS[sid] = {**payload, **out}
+
 
     return {
         "answer": out.get("answer"),
