@@ -32,11 +32,14 @@ class Settings(BaseModel):
     zhipu_api_key: str = os.getenv("ZHIPU_API_KEY", "")
     # zhipu_api_base: str = os.getenv("ZHIPU_API_BASE", "https://open.bigmodel.cn/api/paas/v4" )
 
-    MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
-    MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
-    MYSQL_USER = os.getenv("MYSQL_USER", "tom")
-    MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "123456")  # 可配置到系统环境中
-    MYSQL_DB = os.getenv("MYSQL_DB", "enterprise_kb")
+    MYSQL_HOST:str = os.getenv("MYSQL_HOST", "localhost")
+    MYSQL_PORT:int = int(os.getenv("MYSQL_PORT", "3306"))
+    MYSQL_USER:str = os.getenv("MYSQL_USER", "tom")
+    MYSQL_PASSWORD:int = os.getenv("MYSQL_PASSWORD", "123456")  # 可配置到系统环境中
+    MYSQL_DB:str = os.getenv("MYSQL_DB", "enterprise_kb")
 
+    REDIS_HOST:str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT:int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_TTL_SECONDS:int = 604800  # 7 days 键多久会自动过期
 
 settings = Settings()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from starlette.middleware.cors import CORSMiddleware
 
+from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
 from app.config import settings
@@ -38,6 +39,8 @@ class ChatReq(BaseModel):
 
 class ChatResp(BaseModel):
     answer: str
+    session_id: Optional[str] = None
+    activate_route: Optional[str] = None
 
 
 @app.post("/chat",response_model=ChatResp)
@@ -47,19 +50,27 @@ async def chat(req: ChatReq):
     # out = router_graph.invoke(req.model_dump())
     # return {"answer": out["answer"]}
     payload = req.model_dump()
-    sid = payload.get("session_id")
+    text = payload["text"] or payload["question"] or ""
+    sid = payload.get("session_id") or f"sid-{uuid.uuid4().hex[:10]}"
 
-    if sid and sid in SESSIONS:
-        prev = SESSIONS[sid]
-        merged = {**prev, **payload}
-        merged["text"] = payload.get("text")
+    prev_state = load_session(sid)
+    if prev_state:
+        merged = {**prev_state, **payload}
+        merged["text"] = text
         payload = merged
 
     out = router_graph.invoke(payload)
+
+    new_state = {**payload,**out}
+    save_session(sid,new_state)
     if sid:
         SESSIONS[sid] = {**payload, **out}
 
-    return {"answer":out["answer"]}
+    return {
+        "answer": out.get("answer"),
+        "session_id": sid,
+        "active_route": new_state.get("active_route"),
+    }
 
 @app.post("/ingest")
 async def ingest(
