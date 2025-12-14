@@ -18,7 +18,7 @@ from app.workflows.leave.rules import validate_leave
 
 
 from app.db.worker_mysql import insert_leave_request, get_leave_balance, get_leave_request, cancel_leave_request, \
-    get_recent_leave_requests, update_leave_request
+    get_recent_leave_requests, update_leave_request, approve_leave_request, reject_leave_request
 
 
 # 将JSON变成字典
@@ -70,22 +70,31 @@ def _extract_limit(text:str,default:int = 5):
 def decide_intent(state: LeaveState) -> str:
     text = (state.get("text") or state.get("question") or "").lower()
 
-    # modify intent
-    if any(k in text for k in ["修改", "变更", "调整", "改期", "改到", "改为"]):
-        return "modify"
+    # cancel intent
+    if any(k in text for k in ["取消", "撤销", "作废"]):
+        return "cancel"
+
+    # query intent
+    if any(k in text for k in ["查询", "查", "状态", "进度", "结果"]):
+        if any(k in text for k in ["请假", "年假", "病假", "事假", "休假", "调休", "假期", "申请", "单"]):
+            return "query"
 
     # list intent
     if any(k in text for k in ["最近", "列表", "我的请假", "请假记录", "历史请假"]) and \
             any(k in text for k in ["请假", "年假", "病假", "事假", "休假", "假期", "记录"]):
         return "list"
 
-    """apply / query / cancel"""
-    if any(k in text for k in ["取消", "撤销", "作废"]):
-        return "cancel"
+    # modify intent
+    if any(k in text for k in ["修改", "变更", "调整", "改期", "改到", "改为"]):
+        return "modify"
 
-    if any(k in text for k in ["查询", "查", "状态", "进度", "结果"]):
-        if any(k in text for k in ["请假", "年假", "病假", "事假", "休假", "调休", "假期", "申请", "单"]):
-            return "query"
+    # approve intent (HR/Admin)
+    if any(k in text for k in ["批准", "同意", "通过", "审批通过"]):
+        return "approve"
+
+    # reject intent (HR/Admin)
+    if any(k in text for k in ["驳回", "拒绝", "不通过", "审批拒绝"]):
+        return "reject"
 
     return "apply"
 
@@ -264,6 +273,48 @@ def parse_time_node(state: LeaveState) -> dict:
         return {"req": req}
     return {}
 
+def approve_leave_node(state: LeaveState) -> dict:
+    role = (state.get("user_role") or "").lower()
+    if role not in {"admin", "hr"}:
+        return {"answer": "你没有审批权限（需要 HR/Admin）。"}
+
+    text = state.get("text") or state.get("question") or ""
+    leave_id = state.get("leave_id") or _extract_leave_id(text)
+    if not leave_id:
+        return {"answer": "请提供要审批的请假编号（例如 LV-xxxxxxx）。"}
+
+    ok = approve_leave_request(leave_id, approver=state.get("requester", "admin"))
+    if not ok:
+        return {"answer": "审批失败：未找到该单，或单据不是待审批状态（PENDING）。"}
+
+    return {"leave_id": leave_id, "answer": f"已审批通过请假单 {leave_id}。"}
+
+def reject_leave_node(state: LeaveState) -> dict:
+    role = (state.get("user_role") or "").lower()
+    if role not in {"admin", "hr"}:
+        return {"answer": "你没有审批权限（需要 HR/Admin）。"}
+
+    text = state.get("text") or state.get("question") or ""
+    leave_id = state.get("leave_id") or _extract_leave_id(text)
+    if not leave_id:
+        return {"answer": "请提供要驳回的请假编号（例如 LV-xxxxxxx）。"}
+
+    # naive reason extraction
+    reason = None
+    m = re.search(r"(因为|理由|原因)[:： ]?(.*)$", text)
+    if m:
+        reason = (m.group(2) or "").strip()[:200] or None
+
+    ok = reject_leave_request(
+        leave_id,
+        approver=state.get("requester", "admin"),
+        reason=reason,
+    )
+    if not ok:
+        return {"answer": "驳回失败：未找到该单，或单据不是待审批状态（PENDING）。"}
+
+    return {"leave_id": leave_id, "answer": f"已驳回请假单 {leave_id}。原因：{reason or '未填写'}"}
+
 # 抽槽节点
 def extract_slots_node(state: LeaveState) -> dict:
     llm = get_llm()
@@ -356,6 +407,9 @@ def build_leave_graph():
     g.add_node("query",query_leave_node)
     g.add_node("cancel",cancel_leave_node)
     g.add_node("list",list_leave_node)
+    g.add_node("modify", modify_leave_node)
+    g.add_node("approve", approve_leave_node)
+    g.add_node("reject", reject_leave_node)
     # apply-flow
     g.add_node("parse_time",parse_time_node)
     g.add_node("extract", extract_slots_node)
@@ -363,7 +417,7 @@ def build_leave_graph():
     g.add_node("need_info", need_info_node)
     g.add_node("confirm", confirm_node)
     g.add_node("create", create_leave_node)
-    g.add_node("modify", modify_leave_node)
+
 
     g.add_edge(START, "intent")
     g.add_conditional_edges(
@@ -375,6 +429,8 @@ def build_leave_graph():
             "cancel": "cancel",
             "list": "list",
             "modify": "modify",
+            "approve": "approve",
+            "reject": "reject",
         },
     )
     g.add_edge("parse_time", "extract")
@@ -398,11 +454,13 @@ def build_leave_graph():
         },
     )
 
-    g.add_edge("list", END)
     g.add_edge("query", END)
     g.add_edge("cancel", END)
+    g.add_edge("list", END)
+    g.add_edge("modify", END)
+    g.add_edge("approve", END)
+    g.add_edge("reject", END)
     g.add_edge("need_info", END)
     g.add_edge("create", END)
-    g.add_edge("modify", END)
 
     return g.compile()

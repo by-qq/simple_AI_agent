@@ -106,6 +106,38 @@ def update_leave_request(leave_id: str, fields: dict) -> bool:
             cur.execute(sql, tuple(params))
             return cur.rowcount > 0
 
+def approve_leave_request(leave_id: str, approver: str) -> bool:
+    """
+    Approve a leave request.
+    Only PENDING requests can be approved.
+    Return True if updated, False otherwise.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE leave_requests SET status='APPROVED' "
+                "WHERE leave_id=%s AND status='PENDING'",
+                (leave_id,),
+            )
+            return cur.rowcount > 0
+
+
+def reject_leave_request(leave_id: str, approver: str, reason: str | None = None) -> bool:
+    """
+    Reject a leave request.
+    Only PENDING requests can be rejected.
+    Optionally override reason.
+    Return True if updated, False otherwise.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE leave_requests "
+                "SET status='REJECTED', reason=COALESCE(%s, reason) "
+                "WHERE leave_id=%s AND status='PENDING'",
+                (reason, leave_id),
+            )
+            return cur.rowcount > 0
 
 if __name__=="__main__":
     get_conn()
