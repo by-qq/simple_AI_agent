@@ -14,7 +14,9 @@ from typing import Optional
 import chromadb
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from pydantic import BaseModel
+
+
+from app.models.chat_models import ChatResp, ChatReq
 from app.router_graph import router_graph
 app = FastAPI(title="Enterprise KB Assistant")
 
@@ -33,19 +35,6 @@ app.add_middleware(
 
 DATA_DOCS_DIR = Path("./data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# 这个类继承自BaseModel，转化成json
-class ChatReq(BaseModel):
-    text: str
-    user_role: str = "public"
-    requester: str = "anonymous"
-    session_id: Optional[str] = None  # 通过这一行给大模型添加记忆
-
-class ChatResp(BaseModel):
-    answer: str
-    session_id: Optional[str] = None
-    activate_route: Optional[str] = None
 
 
 @app.post("/chat",response_model=ChatResp)

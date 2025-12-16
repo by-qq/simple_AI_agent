@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.deps import get_llm
 from app.prompts.HR_prompts import HRPrompts
 from app.prompts.TIME_prompts import TimePrompts
-from app.workflows.leave.models import LeaveState
+from app.models.leave_models import LeaveState
 from app.workflows.leave.rules import validate_leave
 
 

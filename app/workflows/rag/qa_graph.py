@@ -3,17 +3,11 @@ from typing import TypedDict, List, Any
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, AIMessage
 
+from app.models.qa_models import QAState
 from app.prompts.RAG_prompts import QA_SYSTEM, QA_USER
 from app.deps import get_llm, get_vs
 
 
-class QAState(TypedDict, total=False):
-    question: str
-    text: str
-    user_role: str
-    docs: List[Any]
-    answer: str
-    messages: List[Any]
 
 
 def decide_retrieve(state: QAState) -> str:

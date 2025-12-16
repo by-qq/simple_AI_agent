@@ -35,9 +35,9 @@ def get_user_permissions(user_id: int) -> Set[str]:
             rows = cur.fetchall()
     return {r["code"] for r in rows}
 
-if __name__=='__main__':
-    print(get_user_roles(1))
-    print(get_user_permissions(1))
+# if __name__=='__main__':
+#     print(get_user_roles(1))
+#     print(get_user_permissions(1))
 
 
 

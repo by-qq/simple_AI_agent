@@ -8,27 +8,14 @@
 # • tool -> 调用别的工具
 #
 # 现在是一个最小可用版本，只实现了Q&A路由
-from typing import TypedDict, Any
+
 from langgraph.graph import StateGraph, START, END
+
+from app.models.router_models import RouterState
 from app.workflows.rag.qa_graph import build_qa_graph
 from app.workflows.leave.leave_graph import build_leave_graph
 
-# 这个模型能够存储路由的状态
-class RouterState(TypedDict, total=False):  # 顶层状态结构，total=False表示下面所有字段都是可选的
-    question: str  # 给QA的问题
-    text: str  # 用户原始文本
-    user_role: str  # 用户角色
-    mode: str  # 模式标记，比如qa，rag，kb等等
 
-    requester:str
-    active_route:str
-    req: dict
-    missing_field: list[str]
-    violations: list[str]
-
-    answer: str  # 答案
-    docs: list[Any]  # QA检索到的文档列表
-    leave_id:str
 
 def decide_route(state: RouterState) -> str:
     # 决定走哪个路由
