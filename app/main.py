@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from starlette.middleware.cors import CORSMiddleware
 
+from app import auth
 from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
@@ -16,6 +17,11 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
 from app.router_graph import router_graph
 app = FastAPI(title="Enterprise KB Assistant")
+
+import fastapi_cdn_host # 解决docs访问超时导致的空白网页问题
+fastapi_cdn_host.patch_docs(app)
+
+app.include_router(auth.router)
 
 app.add_middleware(
     CORSMiddleware,

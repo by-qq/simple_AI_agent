@@ -17,7 +17,7 @@ from app.workflows.leave.models import LeaveState
 from app.workflows.leave.rules import validate_leave
 
 
-from app.db.worker_mysql import insert_leave_request, get_leave_balance, get_leave_request, cancel_leave_request, \
+from app.db.mysql_leave import insert_leave_request, get_leave_balance, get_leave_request, cancel_leave_request, \
     get_recent_leave_requests, update_leave_request, approve_leave_request, reject_leave_request
 
 
