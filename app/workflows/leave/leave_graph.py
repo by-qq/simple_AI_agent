@@ -123,13 +123,13 @@ def modify_leave_node(state: LeaveState) -> dict:
     leave_id = state.get("leave_id") or _extract_leave_id(text)
     if not leave_id:
         return {"answer": "请提供要修改的请假编号（例如 LV-xxxxxxx）。"}
-
+    # 防止用户修改批准、拒绝或取消的请假单
     old = get_leave_request(leave_id)
     if not old:
         return {"answer": f"未找到编号为 {leave_id} 的请假申请。"}
     if old["status"] != "PENDING":
         return {"answer": f"{leave_id} 不是待审批状态，无法修改（当前：{old['status']}）。"}
-    # 1) 基于旧单构造 base req
+    # 1) 基于旧单构造 base req，保证修改的完整性，用户可能之说修改某个字段，未提及其他字段
     base_req = {
         "leave_type": old["leave_type"],
         "start_time": old["start_time"].strftime("%Y-%m-%d %H:%M"),

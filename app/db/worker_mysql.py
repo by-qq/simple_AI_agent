@@ -1,4 +1,6 @@
 # 处理请假工单数据库的操作
+import json
+from typing import Optional, Any, Dict
 
 import pymysql
 from contextlib import contextmanager
@@ -84,11 +86,13 @@ def update_leave_request(leave_id: str, fields: dict) -> bool:
     Only update PENDING requests.
     fields can include: leave_type, start_time, end_time, duration_days, reason
     """
+    # 使用集合进行字段白名单过滤，防止SQL注入以及误操作
     allowed = {"leave_type", "start_time", "end_time", "duration_days", "reason"}
     sets = []
     params = []
     for k, v in fields.items():
         if k in allowed and v is not None:
+            # 动态SQL构建
             sets.append(f"{k}=%s")  # sets=['leave_type=%s', 'end_time=%s']
             params.append(v)  # params=['年假', 'xx年月日']
 
@@ -138,6 +142,42 @@ def reject_leave_request(leave_id: str, approver: str, reason: str | None = None
                 (reason, leave_id),
             )
             return cur.rowcount > 0
+
+
+def create_ticket(
+        question: str,
+        user_id: Optional[str] = None,
+        user_role: str = "public",
+        status: str = "pending",
+        priority: str = "normal",
+        category: Optional[str] = None,
+        tags: Optional[Dict[str, Any]] = None,
+        reason: Optional[str] = None  # 如果需要额外的原因字段
+) -> bool:
+    """
+    创建工单并插入数据库。
+    返回新创建的工单ID，失败返回None。
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # 序列化tags为JSON
+            tags_json = json.dumps(tags) if tags else None
+
+            cur.execute(
+                """
+                INSERT INTO tickets (question,
+                                     user_id,
+                                     user_role,
+                                     status,
+                                     priority,
+                                     category,
+                                     tags)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (question, user_id, user_role, status, priority, category, tags_json),
+            )
+            conn.commit()
+            return cur.lastrowid  # 返回自增ID
 
 if __name__=="__main__":
     get_conn()
