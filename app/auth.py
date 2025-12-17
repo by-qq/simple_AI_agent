@@ -13,11 +13,11 @@ from app.security.security import verify_password, create_access_token, decode_t
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ---------------- Dependencies ----------------
-
+# 该函数要求必须有token才能够访问的接口
 def get_current_user(authorization: str | None = Header(default=None)) -> UserInDB:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Bearer token")
-
+    # 截取token中bearer后面的
     token = authorization.split(" ", 1)[1].strip()
     try:
         payload = decode_token(token)
@@ -41,7 +41,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> UserIn
         is_active=bool(u["is_active"]),
         is_super_admin=bool(u["is_super_admin"]),
     )
-
+# 主要用于没有用户都能够进行访问的设计
 def get_current_user_optional(authorization: str | None = Header(default=None)) -> UserInDB | None:
     if not authorization:
         return None
