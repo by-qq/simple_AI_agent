@@ -42,9 +42,9 @@ class Settings(BaseModel):
     REDIS_PORT:int = int(os.getenv("REDIS_PORT", "6379"))
     REDIS_TTL_SECONDS:int = 604800  # 7 days 键多久会自动过期
 
-    JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-changeme")
-    JWT_ALG = os.getenv("JWT_ALG", "HS256")
-    JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", 120))
+    JWT_SECRET:str = os.getenv("JWT_SECRET", "dev-only-changeme")
+    JWT_ALG:str = os.getenv("JWT_ALG", "HS256")
+    JWT_EXPIRE_MINUTES:int = int(os.getenv("JWT_EXPIRE_MINUTES", 120))
 
 
 settings = Settings()

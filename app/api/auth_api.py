@@ -88,3 +88,5 @@ def login(req: LoginReq):
 @router.get("/me", response_model=UserInDB)
 def me(current_user: UserInDB = Depends(get_current_user)):
     return current_user
+# 以上三个超链接的登陆和注册不需要任何权限
+# me这超链接依赖这个函数，这仅仅是要求登陆，并没有涉及权限

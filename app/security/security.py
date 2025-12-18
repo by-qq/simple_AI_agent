@@ -27,6 +27,7 @@ def decode_token(token: str) -> dict[str, Any]:
     return decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALG])
 
 if __name__ == '__main__':
+
     print(hash_password("123"))
     print(verify_password("123", "$bcrypt-sha256$v=2,t=2b,r=12$PxP3Hn.jXZ92uW9qRXzui.$79DfXhEbfYvMuYMv4pFXX6mdm.Sbxze"))
 
