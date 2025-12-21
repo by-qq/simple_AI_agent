@@ -140,7 +140,7 @@ def set_user_roles(user_id: int, role_codes: list[str]) -> None:
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM user_roles WHERE user_id=%s", (user_id,))
+            # cur.execute("DELETE FROM user_roles WHERE user_id=%s", (user_id,))
             for code in role_codes:
                 cur.execute(
                     "INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (%s,%s)",
