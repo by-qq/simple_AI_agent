@@ -67,6 +67,17 @@ def _extract_limit(text:str,default:int = 5):
             return default
     return default
 
+def _perms(state: LeaveState) -> set[str]:
+    return set(state.get("permissions") or [])
+
+def _has_perm(state: LeaveState, code:str) -> bool:
+    if state.get("is_super_admin"):
+        return True
+    return code in _perms(state)
+
+def _deny(code:str):
+    return {"answer":f"你没有权限（{code}）执行该操作，请联系管理员分配"}
+
 def decide_intent(state: LeaveState) -> str:
     text = (state.get("text") or state.get("question") or "").lower()
 
@@ -99,6 +110,11 @@ def decide_intent(state: LeaveState) -> str:
     return "apply"
 
 def list_leave_node(state: LeaveState) -> dict:
+    # 查看自己请假记录的权限
+    if not _has_perm(state,"leave.view_self"):
+        return _deny("leave.view_self")
+
+
     text = state.get("text") or state.get("question") or ""
     requester = state.get("requester", "anonymous")
     limit = _extract_limit(text, default=5)
@@ -117,6 +133,10 @@ def list_leave_node(state: LeaveState) -> dict:
     return {"answer": "\n".join(lines)}
 
 def modify_leave_node(state: LeaveState) -> dict:
+    # 修改请假记录权限
+    if not _has_perm(state,"leave.modify"):
+        return _deny("leave.modify")
+
     text = state.get("text") or state.get("question") or ""
     requester = state.get("requester", "anonymous")
 
@@ -207,7 +227,7 @@ def modify_leave_node(state: LeaveState) -> dict:
 def intent_node(state: LeaveState) -> dict:
     return {}
 
-# 查询审批节点
+
 def query_leave_node(state: LeaveState) -> dict:
     text = state.get("text") or state.get("question") or ""
     leave_id = state.get("leave_id") or _extract_leave_id(text)
@@ -219,6 +239,15 @@ def query_leave_node(state: LeaveState) -> dict:
     row = get_leave_request(leave_id)  # 到mysql数据库中按照id查询
     if not row:
         return {"answer": f"未找到编号为 {leave_id} 的请假申请。"}
+    # 查询请假记录的权限控制
+    me = state.get("requester","anonymous")
+    owner = state.get("requester")
+    if owner == me:
+        if not _has_perm(state,"leave.view_self"):
+            return _deny("leave.view_self")
+    else:
+        if not _has_perm(state,"leave.view_all"):
+            return _deny("leave.view_all")
 
     return {
         "leave_id": leave_id,
@@ -231,13 +260,21 @@ def query_leave_node(state: LeaveState) -> dict:
             f"原因：{row.get('reason') or '无'}"
         ),
     }
-# 取消审批节点
+
 def cancel_leave_node(state: LeaveState) -> dict:
+    # 取消请假的权限
+    if not _has_perm(state,"leave.cancel"):
+        return _deny("leave.cancel")
+
     text = state.get("text") or state.get("question") or ""
     leave_id = state.get("leave_id") or _extract_leave_id(text)
 
     if not leave_id:
         return {"answer": "请提供要取消的请假编号（例如 LV-xxxxxxx）。"}
+
+    row = get_leave_request(leave_id)
+    if not row:
+        return {"answer":f"未找到编号{leave_id}的请假申请"}
 
     ok = cancel_leave_request(leave_id)  # 也是mysql里面写好的取消代码
     if not ok:
@@ -274,6 +311,10 @@ def parse_time_node(state: LeaveState) -> dict:
     return {}
 
 def approve_leave_node(state: LeaveState) -> dict:
+    # 审批请假权限
+    if not _has_perm(state,"leave.approve"):
+        return _deny("leave.approve")
+
     role = (state.get("user_role") or "").lower()
     if role not in {"admin", "hr"}:
         return {"answer": "你没有审批权限（需要 HR/Admin）。"}
@@ -290,6 +331,10 @@ def approve_leave_node(state: LeaveState) -> dict:
     return {"leave_id": leave_id, "answer": f"已审批通过请假单 {leave_id}。"}
 
 def reject_leave_node(state: LeaveState) -> dict:
+    # 驳回请假权限
+    if not _has_perm(state,"leave.reject"):
+        return _deny("leave.reject")
+
     role = (state.get("user_role") or "").lower()
     if role not in {"admin", "hr"}:
         return {"answer": "你没有审批权限（需要 HR/Admin）。"}
@@ -385,6 +430,10 @@ def decide_confirm(state: LeaveState) -> str:
     return "end"
 
 def create_leave_node(state: LeaveState) -> dict:
+    # 申请请假的权限控制
+    if not _has_perm(state,"leave.apply"):
+        return _deny("leave.apply")
+
     leave_id = "LV-" + uuid.uuid4().hex[:8]
     req = state.get("req") or dict()
     req_to_save = {

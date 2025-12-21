@@ -37,5 +37,10 @@ class LeaveState(TypedDict, total=False):
     confirmed: bool # 批准状态
     leave_id: Optional[str]
 
+    user_id: Optional[int]
+    roles: List[str]    # 可能和roles重复，但为了避免更改过多选择保留user_role
+    permissions: List[str]
+    is_super_admin: bool
+
 
 
