@@ -3,7 +3,7 @@ from __future__ import annotations
 from starlette.middleware.cors import CORSMiddleware
 
 from app.api import auth_api, rbac_api
-from app.db.mysql_rbac import get_role_permissions
+from app.db.mysql_auth import get_user_by_username
 from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
@@ -14,12 +14,13 @@ from pathlib import Path
 from typing import Optional
 import chromadb
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException,  Request
 
 from app.models.chat_models import ChatResp, ChatReq
 from app.router_graph import router_graph
 from app.security.rbac.perms import require_permission, check_permission
+from app.security.security import decode_token
+
 app = FastAPI(title="Enterprise KB Assistant")
 
 import fastapi_cdn_host # 解决docs访问超时导致的空白网页问题
@@ -41,14 +42,22 @@ DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.post("/chat",response_model=ChatResp)
-async def chat(req: ChatReq):
-    # 这里可能需要更改
-    # user_role = req.get("user_role")
-    # current_user_code = get_role_permissions(user_role)
-    # require_permission(current_user_code, "kb.view_public")
-    # require_permission(current_user_code, "kb.view_internal")
-    # check_permission(current_user, "kb.view_public")
-    # check_permission(current_user, "kb.view_internal")
+async def chat(req: ChatReq,request: Request):
+
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+    if token:
+        payload = decode_token(token)
+        if payload:
+            req.requester = payload.get("sub")
+            current_user = get_user_by_username(req.requester)
+            require_permission(current_user, "kb.view_public")
+            require_permission(current_user, "kb.view_internal")
+            check_permission(current_user, "kb.view_public")
+            check_permission(current_user, "kb.view_internal")
+
 
     # req.model_dump()，将请求对象转化为字典格式
     # 将字典数据输入到图中，之后就按照图定义的结构开始执行并返回最终结果
@@ -78,6 +87,7 @@ async def chat(req: ChatReq):
 
 @app.post("/ingest")
 async def ingest(
+    request: Request,
     file: UploadFile = File(...),
     visibility: str = Form("public"),
     doc_id: Optional[str] = Form(None),
@@ -91,8 +101,18 @@ async def ingest(
     - Upserts into the configured Chroma collection
     """
 
-    # require_permission(current_user_code, "kb.manage_docs")
-    # check_permission(current_user, "kb.manage_docs")
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+    if token:
+        payload = decode_token(token)
+        if payload:
+            username = payload.get("sub")
+            current_user = get_user_by_username(username)
+            require_permission(current_user, "kb.manage_docs")
+            check_permission(current_user, "kb.manage_docs")
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="Empty filename")
 
@@ -131,6 +151,7 @@ async def ingest(
 
 @app.post("/reindex")
 def reindex(
+    request: Request,
     visibility_default: str = Form("public"),
 ):
     """
@@ -138,8 +159,18 @@ def reindex(
 
     WARNING: This deletes the current collection first.
     """
-    # require_permission(current_user_code, "kb.manage_docs")
-    # check_permission(current_user, "kb.manage_docs")
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.replace("Bearer ", "")
+    if token:
+        payload = decode_token(token)
+        if payload:
+            username = payload.get("sub")
+            current_user = get_user_by_username(username)
+            require_permission(current_user, "kb.manage_docs")
+            check_permission(current_user, "kb.manage_docs")
+
 
     visibility_default = (visibility_default or "public").strip().lower()
 
