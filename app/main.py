@@ -3,6 +3,7 @@ from __future__ import annotations
 from starlette.middleware.cors import CORSMiddleware
 
 from app.api import auth_api, rbac_api
+from app.api.auth_api import get_current_user
 from app.db.mysql_auth import get_user_by_username
 from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 import chromadb
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException,  Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
 
 from app.models.chat_models import ChatResp, ChatReq
 from app.router_graph import router_graph
@@ -42,21 +43,11 @@ DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.post("/chat",response_model=ChatResp)
-async def chat(req: ChatReq,request: Request):
-
-    auth_header = request.headers.get("Authorization")
-    token = None
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-    if token:
-        payload = decode_token(token)
-        if payload:
-            req.requester = payload.get("sub")
-            current_user = get_user_by_username(req.requester)
-            require_permission(current_user, "kb.view_public")
-            require_permission(current_user, "kb.view_internal")
-            check_permission(current_user, "kb.view_public")
-            check_permission(current_user, "kb.view_internal")
+async def chat(req: ChatReq,current_user = Depends(get_current_user)):
+    require_permission(current_user, "kb.view_public")
+    require_permission(current_user, "kb.view_internal")
+    check_permission(current_user, "kb.view_public")
+    check_permission(current_user, "kb.view_internal")
 
 
     # req.model_dump()，将请求对象转化为字典格式
@@ -87,10 +78,10 @@ async def chat(req: ChatReq,request: Request):
 
 @app.post("/ingest")
 async def ingest(
-    request: Request,
     file: UploadFile = File(...),
     visibility: str = Form("public"),
-    doc_id: Optional[str] = Form(None),
+    doc_id: Optional[str] = Form(None)
+    ,current_user = Depends(get_current_user)
 ):
     """
     Upload a single document and upsert into Chroma.
@@ -101,17 +92,9 @@ async def ingest(
     - Upserts into the configured Chroma collection
     """
 
-    auth_header = request.headers.get("Authorization")
-    token = None
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-    if token:
-        payload = decode_token(token)
-        if payload:
-            username = payload.get("sub")
-            current_user = get_user_by_username(username)
-            require_permission(current_user, "kb.manage_docs")
-            check_permission(current_user, "kb.manage_docs")
+
+    require_permission(current_user, "kb.manage_docs")
+    check_permission(current_user, "kb.manage_docs")
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Empty filename")
@@ -151,25 +134,17 @@ async def ingest(
 
 @app.post("/reindex")
 def reindex(
-    request: Request,
     visibility_default: str = Form("public"),
+    current_user = Depends(get_current_user)
 ):
     """
     Full rebuild of the collection from ./data/docs.
 
     WARNING: This deletes the current collection first.
     """
-    auth_header = request.headers.get("Authorization")
-    token = None
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-    if token:
-        payload = decode_token(token)
-        if payload:
-            username = payload.get("sub")
-            current_user = get_user_by_username(username)
-            require_permission(current_user, "kb.manage_docs")
-            check_permission(current_user, "kb.manage_docs")
+
+    require_permission(current_user, "kb.manage_docs")
+    check_permission(current_user, "kb.manage_docs")
 
 
     visibility_default = (visibility_default or "public").strip().lower()
