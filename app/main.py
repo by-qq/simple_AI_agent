@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from starlette.middleware.cors import CORSMiddleware
 
-from app.api import auth_api, rbac_api
+from app.api import auth_api, rbac_api, kb_api
 from app.api.auth_api import get_current_user
+from app.db import mysql_kb
 from app.db.mysql_auth import get_user_by_username
 from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
@@ -29,6 +30,7 @@ fastapi_cdn_host.patch_docs(app)
 
 app.include_router(auth_api.router)
 app.include_router(rbac_api.router)
+app.include_router(kb_api.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,8 +82,9 @@ async def chat(req: ChatReq,current_user = Depends(get_current_user)):
 async def ingest(
     file: UploadFile = File(...),
     visibility: str = Form("public"),
-    doc_id: Optional[str] = Form(None)
-    ,current_user = Depends(get_current_user)
+    doc_id: Optional[str] = Form(None),
+    current_user = Depends(get_current_user),
+    overwrite: bool = Form(False),
 ):
     """
     Upload a single document and upsert into Chroma.
@@ -100,6 +103,15 @@ async def ingest(
         raise HTTPException(status_code=400, detail="Empty filename")
 
     visibility = (visibility or "public").strip().lower()
+    doc_id = (doc_id or f"doc-{uuid.uuid4().hex[:12]}").strip()
+
+    existed = mysql_kb.get_kb_document(doc_id)
+    if existed and overwrite:
+        from app.workflows.rag.chroma_admin import delete_by_doc_id
+        try:
+            delete_by_doc_id(doc_id)
+        except Exception:
+            print("逻辑删除时数据库报错")
 
     suffix = Path(file.filename).suffix
     # uuid全局唯一标识符，suffix是扩展名
@@ -115,20 +127,47 @@ async def ingest(
     if not docs:
         raise HTTPException(status_code=400, detail=f"Unsupported or empty file type: {suffix}")
 
-    chunks = split_with_visibility(docs, visibility=visibility, doc_id=doc_id)
+    extra_meta = {
+        "original_filename": file.filename,
+        "stored_path":str(save_path),
+        "uploader_user_id": current_user.id,
+        "uploader_username": current_user.username,
+        "uploader_at":int(time.time())
+
+    }
+    chunks = split_with_visibility(docs, visibility=visibility, doc_id=doc_id, extra_meta=extra_meta)
 
     vs = get_vs()
     vs.add_documents(chunks)
-    try:
+    try:        # 持久化，兼容版本低的
         vs.persist()
     except Exception:
         pass
+    # 同步mysql中的数据
+    try:
+        from app.workflows.rag.chroma_admin import count_by_doc_id
+        chroma_cnt = count_by_doc_id(doc_id)
+    except Exception:
+        chroma_cnt = len(chunks)
+    try:
+        mysql_kb.upsert_kb_document(
+            doc_id = doc_id,
+            original_filename= file.filename,
+            stored_path=str(save_path),
+            visibility=visibility,
+            uploader_user_id=current_user.id,
+            uploader_username=current_user.username,
+            chunk_count=chroma_cnt,
+        )
+    except Exception:
+        print("mysql数据库插入文件信息失败")
 
     return {
         "saved_as": str(save_path),
         "visibility": visibility,
         "doc_id": doc_id,
         "chunks": len(chunks),
+        "overwrote": bool(existed and overwrite)
     }
 
 

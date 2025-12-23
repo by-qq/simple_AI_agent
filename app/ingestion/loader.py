@@ -59,13 +59,21 @@ def load_single_file(path: Path) -> List[Document]:
 
 # 第二个函数主要是把一批Document切成小块，
 # 并且给每一小块贴上权限标签visibility和文档ID。
-def split_with_visibility(docs: List[Document], visibility: str, doc_id: str | None = None) -> List[Document]:
+def split_with_visibility(docs: List[Document],
+                          visibility: str,
+                          doc_id: str | None = None,
+                          extra_meta: dict | None = None) -> List[Document]:
     chunks = split_docs(docs)
-    for c in chunks:    # 每个chunk都带有元数据
-        c.metadata = dict(c.metadata or {})
-        c.metadata["visibility"] = visibility
-        if doc_id:
+    extra_meta = dict(extra_meta or {})
+    for c in chunks:    # 循环每个切割的小块
+        c.metadata = dict(c.metadata or {}) #取出每块故有的元数据
+        c.metadata["visibility"] = visibility   # 加入可见性元数据
+        if doc_id:                              # 若手动体东文档id也加为元数据
             c.metadata["doc_id"] = doc_id
+        for k, v in extra_meta.items():
+            if v is not None:
+                c.metadata[k] = v   # 将参数提供的额外的元数据也加进来
+
     return chunks
 
 

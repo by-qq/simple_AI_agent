@@ -1,0 +1,57 @@
+# 这个文件里面存放的更多是管理员要用的chroma的功能。比如删除，重新索引、更新可见性。
+# 这些应该都是普通用户做不了的，或者说没有权限去做的。
+
+from __future__ import annotations
+
+from typing import Any
+import chromadb
+from app.config import settings
+
+
+def get_collection():
+    client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
+    return client.get_or_create_collection(settings.collection_name)
+
+
+def delete_by_doc_id(doc_id: str) -> int:
+    # chromadb特有的api用来按照doc_id删除其中的一个文档
+    col = get_collection()  # 这个函数用于获取我向量数据中集合的名字
+    try:
+        before = col.count()
+        col.delete(where={"doc_id": doc_id})
+        after = col.count()
+        return max(0, int(before - after))
+    except Exception:
+        got = col.get(where={"doc_id": doc_id})
+        ids = got.get("ids") or []
+        if ids:
+            col.delete(ids=ids)
+        return len(ids)
+
+
+def get_ids_and_metadatas_by_doc_id(doc_id: str) -> tuple[list[str], list[dict[str, Any]]]:
+    col = get_collection()
+    got = col.get(where={"doc_id": doc_id}, include=["metadatas"])
+    ids = got.get("ids") or []
+    metas = got.get("metadatas") or []
+    return list(ids), list(metas)
+
+
+def count_by_doc_id(doc_id: str) -> int:
+    ids, _ = get_ids_and_metadatas_by_doc_id(doc_id)
+    return len(ids)
+
+
+def update_visibility_by_doc_id(doc_id: str, visibility: str) -> int:
+    # 更新文档的可见性
+    col = get_collection()
+    ids, metas = get_ids_and_metadatas_by_doc_id(doc_id)
+    if not ids:
+        return 0
+    new_metas: list[dict[str, Any]] = []
+    for m in metas:
+        mm = dict(m or {})
+        mm["visibility"] = visibility
+        new_metas.append(mm)
+    col.update(ids=ids, metadatas=new_metas)
+    return len(ids)
