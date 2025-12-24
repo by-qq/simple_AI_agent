@@ -43,7 +43,7 @@ def get_doc(
 ):
     check_permission(current_user, "kb.manage_docs")
 
-    row = mysql_kb.get_kb_document(doc_id)
+    row = mysql_kb.get_kb_document(doc_id,is_deleted=False)
     if not row:
         raise HTTPException(status_code=404, detail="doc not found")
 
@@ -60,7 +60,7 @@ def update_doc_visibility(
 ):
     check_permission(current_user, "kb.manage_docs")
 
-    row = mysql_kb.get_kb_document(doc_id)
+    row = mysql_kb.get_kb_document(doc_id,is_deleted=False)
     if not row:
         raise HTTPException(status_code=404, detail="doc not found")
 
@@ -72,7 +72,7 @@ def update_doc_visibility(
     mysql_kb.update_kb_document_visibility(doc_id, visibility)
     mysql_kb.update_kb_document_chunk_count(doc_id, count_by_doc_id(doc_id))
 
-    new_row = mysql_kb.get_kb_document(doc_id) or {}
+    new_row = mysql_kb.get_kb_document(doc_id,is_deleted=False) or {}
     data = dict(new_row)
     data["chroma_chunk_count"] = updated
     return data
@@ -86,7 +86,7 @@ def delete_doc(
 ):
     check_permission(current_user, "kb.manage_docs")
 
-    row = mysql_kb.get_kb_document(doc_id)
+    row = mysql_kb.get_kb_document(doc_id,is_deleted=False)
     if not row:
         raise HTTPException(status_code=404, detail="doc not found")
 
@@ -113,7 +113,7 @@ def reembed_doc(
 ):
     check_permission(current_user, "kb.manage_docs")
 
-    row = mysql_kb.get_kb_document(doc_id)
+    row = mysql_kb.get_kb_document(doc_id,is_deleted=True)
     if not row:
         raise HTTPException(status_code=404, detail="doc not found")
 
@@ -146,8 +146,15 @@ def reembed_doc(
         pass
 
     new_cnt = count_by_doc_id(doc_id)
-    mysql_kb.update_kb_document_chunk_count(doc_id, new_cnt)
-    mysql_kb.update_kb_document_visibility(doc_id, visibility)
-
+    # mysql_kb.update_kb_document_chunk_count(doc_id, new_cnt)
+    # mysql_kb.update_kb_document_visibility(doc_id, visibility)
+    print(str(extra_meta.values()),)
+    mysql_kb.upsert_kb_document(doc_id=doc_id,
+                                original_filename=extra_meta.get("original_filename"),
+                                stored_path=extra_meta.get("stored_path"),
+                                visibility=visibility,
+                                uploader_user_id=extra_meta.get("uploader_user_id"),
+                                uploader_username=extra_meta.get("uploader_username"),
+                                chunk_count=new_cnt)
     return KBDocReembedResp(doc_id=doc_id, deleted_chunks=deleted, new_chunks=new_cnt, visibility=visibility)
 

@@ -71,13 +71,13 @@ def list_kb_documents(*, limit: int = 50, offset: int = 0, visibility: str | Non
             return cur.fetchall()
 
 
-def get_kb_document(doc_id: str) -> Optional[dict[str, Any]]:
+def get_kb_document(doc_id: str,is_deleted:bool) -> Optional[dict[str, Any]]:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT doc_id, original_filename, stored_path, visibility, uploader_user_id, uploader_username, chunk_count, created_at, updated_at "
-                "FROM kb_documents WHERE doc_id=%s AND is_deleted=0 LIMIT 1",
-                (doc_id,),
+                "FROM kb_documents WHERE doc_id=%s AND is_deleted=%s LIMIT 1",
+                (doc_id,is_deleted),
             )
             return cur.fetchone()
 
