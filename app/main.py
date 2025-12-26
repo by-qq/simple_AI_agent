@@ -4,8 +4,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.api import auth_api, rbac_api, kb_api
 from app.api.auth_api import get_current_user
+from app.api.kb_api import normalize_visibility
 from app.db import mysql_kb
-from app.db.mysql_auth import get_user_by_username
 from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
@@ -22,6 +22,7 @@ from app.models.chat_models import ChatResp, ChatReq
 from app.router_graph import router_graph
 from app.security.rbac.perms import require_permission, check_permission
 from app.security.security import decode_token
+from app.workflows.rag.chroma_admin import delete_by_doc_id, count_by_doc_id
 
 app = FastAPI(title="Enterprise KB Assistant")
 
@@ -84,6 +85,7 @@ async def ingest(
     visibility: str = Form("public"),
     doc_id: Optional[str] = Form(None),
     current_user = Depends(get_current_user),
+    delete_old_file: bool = Form(False),
     overwrite: bool = Form(False),
 ):
     """
@@ -102,72 +104,81 @@ async def ingest(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Empty filename")
 
-    visibility = (visibility or "public").strip().lower()
+    # visibility = (visibility or "public").strip().lower()
+    visibility = normalize_visibility(visibility or "public")
     doc_id = (doc_id or f"doc-{uuid.uuid4().hex[:12]}").strip()
 
-    existed = mysql_kb.get_kb_document(doc_id)
-    if existed and overwrite:
-        from app.workflows.rag.chroma_admin import delete_by_doc_id
-        try:
-            delete_by_doc_id(doc_id)
-        except Exception:
-            print("逻辑删除时数据库报错")
+    existed = mysql_kb.get_kb_document(doc_id,is_deleted=False)
+    if existed and not overwrite:
+        raise HTTPException(status_code=409, detail=f"doc_id already exists: {doc_id}")
 
+    # old_path里面放的是旧文档存放的路径
+    old_path = existed["stored_path"] if existed else None
+
+    # 1) 先把新文件保存下来
     suffix = Path(file.filename).suffix
-    # uuid全局唯一标识符，suffix是扩展名
     safe_name = f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
-    save_path = DATA_DOCS_DIR / safe_name   # 真正部署的时候使用云盘
+    save_path = DATA_DOCS_DIR / safe_name
 
-    content = await file.read()
+    content = await file.read()  # 因为上传文件时间较长
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
-    save_path.write_bytes(content)
+    save_path.write_bytes(content) # 新文件没问题，做写出操作
 
+    # 2) 先解析新文件、切分出 chunks（确保新文件 OK）
     docs = load_single_file(save_path)
     if not docs:
         raise HTTPException(status_code=400, detail=f"Unsupported or empty file type: {suffix}")
 
     extra_meta = {
         "original_filename": file.filename,
-        "stored_path":str(save_path),
+        "stored_path": str(save_path),
         "uploader_user_id": current_user.id,
         "uploader_username": current_user.username,
-        "uploader_at":int(time.time())
-
+        "uploaded_at": int(time.time()),
     }
     chunks = split_with_visibility(docs, visibility=visibility, doc_id=doc_id, extra_meta=extra_meta)
+    # 程序到此处的时候，新文件已经彻底被分割并放好元数据
 
+    # 3) 如果overwrite：现在再删旧的chroma chunks（此时新 chunks 已经准备好）
+    if existed and overwrite:  # 旧文件要被覆盖，新文件也没问题，要彻底替换
+        delete_by_doc_id(doc_id)
+
+    # 4) 写入向量库
     vs = get_vs()
     vs.add_documents(chunks)
-    try:        # 持久化，兼容版本低的
-        vs.persist()
-    except Exception:
-        pass
-    # 同步mysql中的数据
-    try:
-        from app.workflows.rag.chroma_admin import count_by_doc_id
-        chroma_cnt = count_by_doc_id(doc_id)
-    except Exception:
-        chroma_cnt = len(chunks)
-    try:
-        mysql_kb.upsert_kb_document(
-            doc_id = doc_id,
-            original_filename= file.filename,
-            stored_path=str(save_path),
-            visibility=visibility,
-            uploader_user_id=current_user.id,
-            uploader_username=current_user.username,
-            chunk_count=chroma_cnt,
-        )
-    except Exception:
-        print("mysql数据库插入文件信息失败")
+
+    # 5) 更新注册表——此处的注册表只是一个叫法，实际上就是mysql，和windwos的注册表无关
+    chroma_cnt = count_by_doc_id(doc_id)
+
+    mysql_kb.upsert_kb_document(
+        doc_id=doc_id,
+        original_filename=file.filename,
+        stored_path=str(save_path),
+        visibility=visibility,
+        uploader_user_id=current_user.id,
+        uploader_username=current_user.username,
+        chunk_count=chroma_cnt,
+    )
+
+    # 6) overwrite 时可选删除旧文件（最后一步做）
+    deleted_old_file = False
+    if delete_old_file and old_path and old_path != str(save_path):
+        try:
+            p = Path(old_path)
+            if p.exists() and p.is_file():  # p.is_file是担心对文件夹有影响
+                p.unlink()  # unlink想像成为删除文件
+                deleted_old_file = True
+        except Exception:
+            deleted_old_file = False
 
     return {
         "saved_as": str(save_path),
         "visibility": visibility,
         "doc_id": doc_id,
-        "chunks": len(chunks),
-        "overwrote": bool(existed and overwrite)
+        "chunks": chroma_cnt,
+        "overwrote": bool(existed and overwrite),
+        "deleted_old_file": deleted_old_file,
     }
 
 
