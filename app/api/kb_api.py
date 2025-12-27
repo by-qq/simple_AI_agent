@@ -8,13 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.auth_api import UserInDB, get_current_user
 from app.db import mysql_kb
+from app.db.mysql_visibility import get_visibility_name
 from app.ingestion.loader import load_single_file, split_with_visibility
 from app.models.kb_models import KBDocListItem, KBDocDetail, KBDocVisibilityUpdateReq, KBDocReembedResp, KBDocPageResp
 from app.security.rbac.perms import check_permission
 from app.workflows.rag.chroma_admin import count_by_doc_id, delete_by_doc_id, update_visibility_by_doc_id
 
 router = APIRouter(prefix="/kb", tags=["kb"])
-ALLOWED_VISIBILITIES = {"public", "internal", "hr", "it"}
+ALLOWED_VISIBILITIES = get_visibility_name()
 
 def normalize_visibility(v: str) -> str:
     v = (v or "").strip().lower()
@@ -63,7 +64,6 @@ def list_docs_page(
     current_user: UserInDB = Depends(get_current_user),
 ):
     # pdb.set_trace()  # 程序会在这里暂停
-    print(limit)
     check_permission(current_user, "kb.manage_docs")
 
     items = list_docs(
@@ -76,9 +76,7 @@ def list_docs_page(
         include_chroma_count = include_chroma_count,
         current_user = current_user,
     )
-    print(items)
     total = mysql_kb.count_kb_documents(visibility=visibility, q=q)
-    print(total)
     return {
         "total": total,
         "limit": limit,

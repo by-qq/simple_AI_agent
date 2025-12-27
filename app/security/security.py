@@ -8,7 +8,7 @@ from passlib.context import CryptContext
 
 PWD_CONTEXT = CryptContext(
     schemes=["argon2", "bcrypt_sha256", "pbkdf2_sha256"],  # 支持的算法列表，按偏好排序
-    default="argon2",  # 创建新哈希时，默认使用 argon2
+    default="bcrypt_sha256",  # 创建新哈希时，默认使用 argon2
     deprecated="auto"
 )
 
