@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from app.db.mysql_leave import get_conn
+from app.db.mysql_pool import get_conn
 
 
 def get_visibility_name() -> List[str]:
@@ -13,6 +13,6 @@ def get_visibility_name() -> List[str]:
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute()
+            cur.execute(sql)
             rows = cur.fetchall()
     return rows

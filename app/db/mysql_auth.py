@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.db.mysql_leave import get_conn
+from app.db.mysql_pool import get_conn
 from app.models.auth_models import RegisterReq
 from app.security.security import hash_password
 

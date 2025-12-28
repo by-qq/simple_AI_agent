@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from starlette.middleware.cors import CORSMiddleware
 
 from app.api import auth_api, rbac_api, kb_api
 from app.api.auth_api import get_current_user
 from app.api.kb_api import normalize_visibility
 from app.db import mysql_kb
+from app.db.mysql_pool import init_pool, close_pool
 from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
@@ -24,7 +27,32 @@ from app.security.rbac.perms import require_permission, check_permission
 from app.security.security import decode_token
 from app.workflows.rag.chroma_admin import delete_by_doc_id, count_by_doc_id
 
-app = FastAPI(title="Enterprise KB Assistant")
+# 创建目录（移到 lifespan 外，因为这是配置项）
+DATA_DOCS_DIR = Path("./data/docs")
+DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
+
+# 定义 lifespan 上下文管理器
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    应用生命周期管理
+    - 启动时：初始化连接池
+    - 关闭时：关闭连接池
+    """
+    # 启动时执行
+    print("Application starting up...")
+    init_pool()  # 初始化数据库连接池
+    yield
+    # 关闭时执行
+    print("Application shutting down...")
+    close_pool()  # 关闭数据库连接池
+
+# 使用 lifespan 参数创建 FastAPI 应用
+app = FastAPI(
+    title="Enterprise KB Assistant",
+    version="1.0.0",
+    lifespan=lifespan  # 添加 lifespan 管理器
+)
 
 import fastapi_cdn_host # 解决docs访问超时导致的空白网页问题
 fastapi_cdn_host.patch_docs(app)
@@ -40,10 +68,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-DATA_DOCS_DIR = Path("./data/docs")
-DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
-
 
 @app.post("/chat",response_model=ChatResp)
 async def chat(req: ChatReq,current_user = Depends(get_current_user)):

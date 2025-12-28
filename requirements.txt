@@ -35,7 +35,8 @@ python-jose[cryptography]>=3.3.0,<4.0
 
 # 前端
 streamlit==1.40.2
-
+# 数据库连接池
+DBUtils==3.1.2
 
 # embedding模型需要的包
 # zai-sdk==0.0.4，zhipu

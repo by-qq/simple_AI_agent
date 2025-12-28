@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Optional, Any
 
-from app.db.mysql_leave import get_conn
+from app.db.mysql_pool import get_conn
 
 
 def upsert_kb_document(

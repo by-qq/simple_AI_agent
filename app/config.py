@@ -37,6 +37,9 @@ class Settings(BaseModel):
     MYSQL_USER:str = os.getenv("MYSQL_USER", "tom")
     MYSQL_PASSWORD:int = os.getenv("MYSQL_PASSWORD", "123456")  # 可配置到系统环境中
     MYSQL_DB:str = os.getenv("MYSQL_DB", "enterprise_kb")
+    # MySQL 连接池配置
+    MYSQL_POOL_MIN_SIZE:int = 1
+    MYSQL_POOL_MAX_SIZE:int = 10
 
     REDIS_HOST:str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT:int = int(os.getenv("REDIS_PORT", "6379"))
