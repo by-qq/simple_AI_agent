@@ -1,7 +1,7 @@
 from langchain_community.embeddings import ZhipuAIEmbeddings
 from langchain_openai import ChatOpenAI
 from app.config import settings
-from app.workflows.rag.vectorstore import get_vectorstore
+from app.workflows.rag.vectorstore import get_vectorstore, get_audio_vectorstore
 from langchain_community.chat_models import ChatOpenAI
 
 def get_llm():
@@ -38,6 +38,10 @@ def get_vs():
     """获取向量存储实例"""
 
     return get_vectorstore(get_embeddings())
+
+def get_audio_vs():
+    return get_audio_vectorstore(get_embeddings())
+
 
 # 测试
 if __name__=="__main__":

@@ -49,5 +49,6 @@ class Settings(BaseModel):
     JWT_ALG:str = os.getenv("JWT_ALG", "HS256")
     JWT_EXPIRE_MINUTES:int = int(os.getenv("JWT_EXPIRE_MINUTES", 120))
 
+    CILLECTION_NAME:str = os.getenv("AUDIO_COLLECTION_NAME", "audio_base")
 
 settings = Settings()

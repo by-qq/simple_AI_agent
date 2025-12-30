@@ -70,3 +70,14 @@ def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
                 (audio_id,),
             )
             return cur.fetchone()
+
+def get_audio_segment(audio_id: str, segment_idx: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT audio_id, segment_idx, start_ms, end_ms, text "
+                "FROM audio_segments WHERE audio_id=%s AND segment_idx=%s LIMIT 1",
+                (audio_id, int(segment_idx)),
+            )
+            return cur.fetchone()
+

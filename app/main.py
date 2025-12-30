@@ -26,6 +26,7 @@ from app.router_graph import router_graph
 from app.security.rbac.perms import require_permission, check_permission
 from app.security.security import decode_token
 from app.workflows.rag.chroma_admin import delete_by_doc_id, count_by_doc_id
+from app.workflows.rag.vectorstore import get_client
 
 # 创建目录（移到 lifespan 外，因为这是配置项）
 DATA_DOCS_DIR = Path("./data/docs")
@@ -225,7 +226,7 @@ def reindex(
     visibility_default = (visibility_default or "public").strip().lower()
 
     # 1) Delete & recreate collection via chromadb client
-    client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
+    client = get_client()
     try:
         client.delete_collection(settings.collection_name)
     except Exception:

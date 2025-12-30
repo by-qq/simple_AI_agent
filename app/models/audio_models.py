@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pathlib
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -36,6 +37,7 @@ class AudioSearchHit(BaseModel):
     end_ms: int
     text: str
     score: Optional[float] = None  # 向量库有些返回不了score就留空
+    clip_url: Optional[str] = None  # ⚠️加这行就行
 
 
 # AudioSearchResp: 搜索响应
@@ -44,3 +46,9 @@ class AudioSearchResp(BaseModel):
     k: int
     allowed_visibilities: List[str]
     hits: List[AudioSearchHit]
+
+class FileResponse(BaseModel):
+    path : pathlib.Path
+    media_type: str
+    filename: str
+

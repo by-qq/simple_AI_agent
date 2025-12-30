@@ -6,10 +6,11 @@ from __future__ import annotations
 from typing import Any
 import chromadb
 from app.config import settings
+from app.workflows.rag.vectorstore import get_client
 
 
 def get_collection():
-    client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
+    client = get_client()
     return client.get_or_create_collection(settings.collection_name)
 
 
