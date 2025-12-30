@@ -30,14 +30,18 @@ pymysql>=1.1.1,<2.0
 redis==7.1.0
 
 # --- auth ---
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
 python-jose[cryptography]>=3.3.0,<4.0
 
 # 前端
 streamlit==1.40.2
 # 数据库连接池
 DBUtils==3.1.2
-
+# 添加音频依赖
+faster-whisper>=1.0.0
+ffmpeg-python>=0.2.0
+soundfile>=0.12.1
+numpy>=2.4.0
 # embedding模型需要的包
 # zai-sdk==0.0.4，zhipu
 

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from starlette.middleware.cors import CORSMiddleware
 
-from app.api import auth_api, rbac_api, kb_api
+from app.api import auth_api, rbac_api, kb_api, audio_api
 from app.api.auth_api import get_current_user
 from app.api.kb_api import normalize_visibility
 from app.db import mysql_kb
@@ -34,7 +34,7 @@ DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)
 # 定义 lifespan 上下文管理器
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
+    """sudo
     应用生命周期管理
     - 启动时：初始化连接池
     - 关闭时：关闭连接池
@@ -60,6 +60,7 @@ fastapi_cdn_host.patch_docs(app)
 app.include_router(auth_api.router)
 app.include_router(rbac_api.router)
 app.include_router(kb_api.router)
+app.include_router(audio_api.router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -15,10 +15,11 @@ from app.security.rbac.perms import check_permission
 from app.workflows.rag.chroma_admin import count_by_doc_id, delete_by_doc_id, update_visibility_by_doc_id
 
 router = APIRouter(prefix="/kb", tags=["kb"])
-ALLOWED_VISIBILITIES = get_visibility_name()
+ALLOWED_VISIBILITIES = name_set = {item['name'] for item in get_visibility_name()}
 
 def normalize_visibility(v: str) -> str:
     v = (v or "").strip().lower()
+    print(ALLOWED_VISIBILITIES)
     if v not in ALLOWED_VISIBILITIES:
         raise HTTPException(status_code=400, detail=f"invalid visibility: {v}")
     return v

@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+from typing import Any, Optional
+
+from app.db.mysql_pool import get_conn
+
+
+def upsert_audio_document(
+    *,
+    audio_id: str,
+    original_filename: str,
+    stored_path: str,
+    duration_ms: int,
+    language: str | None,
+    visibility: str,
+    status: str,
+    uploader_user_id: int | None,
+    uploader_username: str | None,
+    segment_count: int,
+) -> None:
+    sql = """
+    INSERT INTO audio_documents
+      (audio_id, original_filename, stored_path, duration_ms, language, visibility, status,
+       uploader_user_id, uploader_username, segment_count)
+    VALUES
+      (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    ON DUPLICATE KEY UPDATE
+      original_filename=VALUES(original_filename),
+      stored_path=VALUES(stored_path),
+      duration_ms=VALUES(duration_ms),
+      language=VALUES(language),
+      visibility=VALUES(visibility),
+      status=VALUES(status),
+      uploader_user_id=VALUES(uploader_user_id),
+      uploader_username=VALUES(uploader_username),
+      segment_count=VALUES(segment_count)
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql,
+                (
+                    audio_id, original_filename, stored_path, int(duration_ms), language,
+                    visibility, status, uploader_user_id, uploader_username, int(segment_count)
+                ),
+            )
+
+
+def replace_audio_segments(audio_id: str, segments: list[dict[str, Any]]) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM audio_segments WHERE audio_id=%s", (audio_id,))
+            if segments:
+                cur.executemany(
+                    "INSERT INTO audio_segments (audio_id, segment_idx, start_ms, end_ms, text) VALUES (%s,%s,%s,%s,%s)",
+                    [
+                        (audio_id, int(s["segment_idx"]), int(s["start_ms"]), int(s["end_ms"]), s["text"])
+                        for s in segments
+                    ],
+                )
+
+
+def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT audio_id, original_filename, stored_path, duration_ms, language, visibility, status, "
+                "uploader_user_id, uploader_username, segment_count, created_at, updated_at "
+                "FROM audio_documents WHERE audio_id=%s LIMIT 1",
+                (audio_id,),
+            )
+            return cur.fetchone()
