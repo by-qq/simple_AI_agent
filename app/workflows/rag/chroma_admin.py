@@ -56,3 +56,17 @@ def update_visibility_by_doc_id(doc_id: str, visibility: str) -> int:
         new_metas.append(mm)
     col.update(ids=ids, metadatas=new_metas)
     return len(ids)
+
+def delete_by_audio_id(audio_id: str) -> int:
+    col = get_collection()
+    try:
+        before = col.count()
+        col.delete(where={"audio_id": audio_id})
+        after = col.count()
+        return max(0, int(before - after))
+    except Exception:
+        got = col.get(where={"audio_id": audio_id})
+        ids = got.get("ids") or []
+        if ids:
+            col.delete(ids=ids)
+        return len(ids)

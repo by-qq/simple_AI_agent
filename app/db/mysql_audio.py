@@ -81,3 +81,28 @@ def get_audio_segment(audio_id: str, segment_idx: int):
             )
             return cur.fetchone()
 
+
+def update_audio_status(audio_id: str, status: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE audio_documents SET status=%s WHERE audio_id=%s", (status, audio_id))
+
+
+def update_audio_indexed(audio_id: str, duration_ms: int, language: str | None, segment_count: int, status: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE audio_documents SET duration_ms=%s, language=%s, segment_count=%s, status=%s WHERE audio_id=%s",
+                (int(duration_ms), language, int(segment_count), status, audio_id),
+            )
+
+
+def is_audio_running(audio_id: str) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM audio_documents WHERE audio_id=%s LIMIT 1", (audio_id,))
+            row = cur.fetchone()
+            return bool(row and row.get("status") in ("queued", "running"))
+
+
+

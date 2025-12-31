@@ -11,18 +11,12 @@ from app.db import mysql_kb
 from app.db.mysql_visibility import get_visibility_name
 from app.ingestion.loader import load_single_file, split_with_visibility
 from app.models.kb_models import KBDocListItem, KBDocDetail, KBDocVisibilityUpdateReq, KBDocReembedResp, KBDocPageResp
+from app.security.kb_visibility import normalize_visibility
 from app.security.rbac.perms import check_permission
 from app.workflows.rag.chroma_admin import count_by_doc_id, delete_by_doc_id, update_visibility_by_doc_id
 
 router = APIRouter(prefix="/kb", tags=["kb"])
-ALLOWED_VISIBILITIES = name_set = {item['name'] for item in get_visibility_name()}
 
-def normalize_visibility(v: str) -> str:
-    v = (v or "").strip().lower()
-    print(ALLOWED_VISIBILITIES)
-    if v not in ALLOWED_VISIBILITIES:
-        raise HTTPException(status_code=400, detail=f"invalid visibility: {v}")
-    return v
 
 @router.get("/docs", response_model=list[KBDocListItem])
 def list_docs(

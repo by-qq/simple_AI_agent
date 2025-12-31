@@ -45,5 +45,8 @@ numpy>=2.4.0
 # embedding模型需要的包
 # zai-sdk==0.0.4，zhipu
 
+celery==5.6.0
+amqp==5.3.1
+
 
 

@@ -16,6 +16,7 @@ from app.ingestion.audio_loader import transcode_to_wav_16k_mono, ffprobe_durati
 from app.ingestion.clip import clip_audio_to_mp3
 from app.ingestion.retrieve_audio import audio_similarity_search_for_user
 from app.ingestion.segments import merge_by_max_duration
+from app.security.kb_visibility import compute_allowed_kb_visibilities
 from app.security.rbac.perms import check_permission
 from app.models.audio_models import AudioIngestResp, AudioDocDetail, AudioSearchResp, AudioSearchHit, FileResponse
 
@@ -190,7 +191,7 @@ def get_audio_clip(
         raise HTTPException(status_code=404, detail="audio not found")
 
     # 2) 可见性校验：audio_documents.visibility 必须在allowed中
-    # allowed = compute_allowed_kb_visibilities(current_user)
+    allowed = compute_allowed_kb_visibilities(current_user)
     allowed = ["public"]
     doc_vis = (row.get("visibility") or "").strip().lower()
     if doc_vis not in set(allowed):
