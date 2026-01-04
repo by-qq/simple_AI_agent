@@ -1,7 +1,7 @@
 from langchain_community.embeddings import ZhipuAIEmbeddings
 from langchain_openai import ChatOpenAI
 from app.config import settings
-from app.workflows.rag.vectorstore import get_vectorstore, get_audio_vectorstore
+from app.db.vectorstore import get_vectorstore, get_audio_vectorstore
 from langchain_community.chat_models import ChatOpenAI
 
 def get_llm():

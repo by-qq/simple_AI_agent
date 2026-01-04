@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 from typing import Any
-import chromadb
 from app.config import settings
-from app.workflows.rag.vectorstore import get_client
+from app.db.vectorstore import get_client
 
 
 def get_collection():

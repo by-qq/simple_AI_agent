@@ -17,16 +17,14 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
-import chromadb
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
 
 from app.models.chat_models import ChatResp, ChatReq
-from app.router_graph import router_graph
+from app.workflows.router_graph import router_graph
 from app.security.rbac.perms import require_permission, check_permission
-from app.security.security import decode_token
-from app.workflows.rag.chroma_admin import delete_by_doc_id, count_by_doc_id
-from app.workflows.rag.vectorstore import get_client
+from app.db.chroma_admin import delete_by_doc_id, count_by_doc_id
+from app.db.vectorstore import get_client
 
 # 创建目录（移到 lifespan 外，因为这是配置项）
 DATA_DOCS_DIR = Path("./data/docs")

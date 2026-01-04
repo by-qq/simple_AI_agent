@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pdb
 from pathlib import Path
 from typing import Optional
 
@@ -8,12 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.auth_api import UserInDB, get_current_user
 from app.db import mysql_kb
-from app.db.mysql_visibility import get_visibility_name
 from app.ingestion.loader import load_single_file, split_with_visibility
 from app.models.kb_models import KBDocListItem, KBDocDetail, KBDocVisibilityUpdateReq, KBDocReembedResp, KBDocPageResp
 from app.security.kb_visibility import normalize_visibility
 from app.security.rbac.perms import check_permission
-from app.workflows.rag.chroma_admin import count_by_doc_id, delete_by_doc_id, update_visibility_by_doc_id
+from app.db.chroma_admin import count_by_doc_id, delete_by_doc_id, update_visibility_by_doc_id
 
 router = APIRouter(prefix="/kb", tags=["kb"])
 
