@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.auth_api import UserInDB, get_current_user
 from app.db import mysql_kb
-from app.ingestion.loader import load_single_file, split_with_visibility
+from app.tools.kb_loader import load_single_file, split_with_visibility
 from app.models.kb_models import KBDocListItem, KBDocDetail, KBDocVisibilityUpdateReq, KBDocReembedResp, KBDocPageResp
 from app.security.kb_visibility import normalize_visibility
 from app.security.rbac.perms import check_permission

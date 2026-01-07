@@ -105,4 +105,19 @@ def is_audio_running(audio_id: str) -> bool:
             return bool(row and row.get("status") in ("queued", "running"))
 
 
+def delete_audio_segments(audio_id: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM audio_segments WHERE audio_id=%s", (audio_id,))
 
+def insert_audio_segments_bulk(audio_id:str ,rows: list[dict[str, Any]]) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO audio_segments (audio_id, segment_idx, start_ms, end_ms, text) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                [
+                    (audio_id, int(r["segment_idx"]), int(r["start_ms"]), int(r["end_ms"]), r["text"])
+                    for r in rows
+                ],
+            )

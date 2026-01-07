@@ -11,7 +11,7 @@ from app.db import mysql_kb
 from app.db.mysql_pool import init_pool, close_pool
 from app.db.redis_session import load_session, save_session
 from app.deps import get_vs
-from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
+from app.tools.kb_loader import load_single_file, split_with_visibility, load_docs, split_docs
 from app.config import settings
 import time
 import uuid

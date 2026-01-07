@@ -1,46 +1,90 @@
 from __future__ import annotations
 
-import time
-import uuid
+import time, uuid
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Request, HTTPException, Query, UploadFile, BackgroundTasks
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile,)
+from fastapi.responses import FileResponse
 from langchain_core.documents import Document
 
 from app.api.auth_api import UserInDB, get_current_user
-from app.api.kb_api import normalize_visibility
-from app.db import mysql_audio
-from app.ingestion.asr import ASR
-from app.ingestion.audio_loader import transcode_to_wav_16k_mono, ffprobe_duration_ms
-from app.ingestion.clip import clip_audio_to_mp3
-from app.ingestion.retrieve_audio import audio_similarity_search_for_user
-from app.ingestion.segments import merge_by_max_duration
-from app.security.kb_visibility import compute_allowed_kb_visibilities
-from app.security.rbac.perms import check_permission
-from app.models.audio_models import AudioIngestResp, AudioDocDetail, AudioSearchResp, AudioSearchHit, FileResponse
+from app.config import settings
+from app.db import mysql_audio, mysql_audio_job
+from app.deps import get_audio_vs
+from app.tools.asr import ASR
+from app.tools.audio_loader import ffprobe_duration_ms
+from app.tools.audio_clip import clip_audio_to_mp3
+from app.tools.pipeline import transcode_to_wav_16k_mono
+from app.tools.segments import merge_by_max_duration
+from app.models.audio_models import AudioDocDetail, AudioSearchResp, AudioSearchHit, AudioIngestAsyncResp, AudioJobResp
+from app.security.rbac.perms import check_permission, allowed_kb_visibilities
+from app.tasks.audio_tasks import audio_ingest_task
 
 router = APIRouter(prefix="/audio", tags=["audio"])
 
-AUDIO_DIR = Path("data/audio")          # 你也可以接到 settings
+AUDIO_DIR = Path(getattr(settings, "audio_dir", "data/audio"))
 AUDIO_WAV_DIR = Path("data/audio_wav")
-CLIP_DIR = Path("data/audio_clips")
+CLIP_DIR = Path(getattr(settings, "audio_clip_dir", "data/audio_clips"))
 
-@router.post("/ingest", response_model=AudioIngestResp)
+def _require_manage_docs(user: UserInDB) -> None:
+    check_permission(user, "kb.manage_docs")
+
+
+def _normalize_visibility(v: str) -> str:
+    v = (v or "").strip().lower()
+    if v in ("public", "internal"):
+        return v
+    return "public"
+
+
+def _compute_allowed_visibilities(user: UserInDB) -> List[str]:
+    perms = getattr(user, "permissions", None)
+    allowed = allowed_kb_visibilities(perms)
+    if "public" not in allowed:
+        allowed = ["public"] + [x for x in allowed if x != "public"]
+    return allowed
+
+
+def _ensure_can_access_visibility(user: UserInDB, doc_visibility: str) -> List[str]:
+    allowed = _compute_allowed_visibilities(user)
+    vis = (doc_visibility or "").strip().lower()
+    if vis not in set(allowed):
+        raise HTTPException(status_code=403, detail="no permission to access this audio")
+    return allowed
+
+
+def _absolute_base(request: Request) -> str:
+    return str(request.base_url).rstrip("/")
+
+
+@router.post("/ingest", response_model=AudioIngestAsyncResp)
 async def ingest_audio(
     file: UploadFile = File(...),
     visibility: str = Form("public"),
     audio_id: Optional[str] = Form(None),
-    language: Optional[str] = Form(None),     # 可传 "zh"/"en"，不传就自动
-    current_user: UserInDB = Depends(get_current_user),
-):
-    check_permission(current_user, "kb.manage_docs")
+    language: Optional[str] = Form(None),
+    overwrite: bool = Form(False),
+    delete_old_file: bool = Form(False),
+    current_user: UserInDB = Depends(get_current_user),):
+
+    _require_manage_docs(current_user)
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Empty filename")
 
-    visibility = normalize_visibility(visibility or "public")
+    visibility = _normalize_visibility(visibility or "public")
     audio_id = (audio_id or f"aud-{uuid.uuid4().hex[:12]}").strip()
+    job_id = f"job-{uuid.uuid4().hex[:12]}"
+
+    if mysql_audio.is_audio_running(audio_id):
+        raise HTTPException(status_code=409, detail="audio is running, try later")
+
+    existed = mysql_audio.get_audio_document(audio_id)
+    if existed and not overwrite:
+        raise HTTPException(status_code=409, detail="audio_id already exists; set overwrite=true")
+
+    old_stored_path = existed["stored_path"] if existed else None
 
     # 1) 保存原始文件
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,8 +112,8 @@ async def ingest_audio(
     chunks = merge_by_max_duration(asr_segs, max_ms=25_000, min_ms=6_000)
 
     # 6) 写 Chroma（文本 embedding）
-    from app.deps import get_vs
-    vs = get_vs()
+
+    vs = get_audio_vs()
 
     docs: list[Document] = []
     segment_rows: list[dict] = []
@@ -111,93 +155,136 @@ async def ingest_audio(
         audio_id=audio_id,
         original_filename=file.filename,
         stored_path=str(raw_path),
-        duration_ms=duration_ms,
-        language=lang,
+        duration_ms=0,
+        language=language,
         visibility=visibility,
-        status="indexed",
-        uploader_user_id=int(current_user.id),
-        uploader_username=current_user.username,
-        segment_count=len(segment_rows),
+        status="queued",
+        uploader_user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        uploader_username=getattr(current_user, "username", None),
+        segment_count=0,
     )
-    mysql_audio.replace_audio_segments(audio_id, segment_rows)
 
-    return AudioIngestResp(
+    mysql_audio_job.create_job(
+        job_id,
+        audio_id,
+        overwrite=bool(overwrite),
+        delete_old_file=bool(delete_old_file),
+        old_stored_path=old_stored_path if overwrite else None,
+    )
+
+    async_result = audio_ingest_task.apply_async(
+        args=[job_id, audio_id],
+        queue=getattr(settings, "celery_audio_queue", "audio"),
+    )
+    mysql_audio_job.bind_task(job_id, async_result.id)
+
+    return AudioIngestAsyncResp(
+        job_id=job_id,
         audio_id=audio_id,
         stored_as=str(raw_path),
-        duration_ms=duration_ms,
-        language=lang,
         visibility=visibility,
-        segments=len(segment_rows),
+        celery_task_id=async_result.id,
+        status_url=f"/audio/jobs/{job_id}",
     )
 
-@router.get("/search", response_model=AudioSearchResp)
-def search_audio(
-    request: Request,
-    q: str = Query(..., min_length=1),
-    k: int = Query(default=6, ge=1, le=20),
+
+@router.get("/jobs/{job_id}", response_model=AudioJobResp)
+def get_audio_job(
+    job_id: str,
     current_user: UserInDB = Depends(get_current_user),
 ):
-    docs, allowed = audio_similarity_search_for_user(q, current_user, k=k)
+    _require_manage_docs(current_user)
+    row = mysql_audio_job.get_job(job_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="job not found")
+    return row
 
-    base = str(request.base_url).rstrip("/")  # e.g. http://127.0.0.1:8002
 
-    hits: list[AudioSearchHit] = []
-    for d in docs:
-        m = d.metadata or {}
-        audio_id = str(m.get("audio_id", "") or "")
-        s = int(m.get("start_ms", 0) or 0)
-        e = int(m.get("end_ms", 0) or 0)
+@router.post("/jobs/{job_id}/cancel")
+def cancel_audio_job(
+    job_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    _require_manage_docs(current_user)
+    ok = mysql_audio_job.request_cancel(job_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"job_id": job_id, "cancel_requested": True}
 
-        clip_url = None
-        if audio_id and e > s:
-            clip_url = f"{base}/audio/{audio_id}/clip?start_ms={s}&end_ms={e}"
 
-        hits.append(
-            AudioSearchHit(
-                audio_id=audio_id,
-                segment_id=str(m.get("segment_id", "") or ""),
-                start_ms=s,
-                end_ms=e,
-                text=d.page_content,
-                score=None,
-                clip_url=clip_url,
-            )
-        )
-
-    return AudioSearchResp(q=q, k=k, allowed_visibilities=allowed, hits=hits)
-@router.get("/{audio_id}", response_model=AudioDocDetail)
-def get_audio(audio_id: str, current_user: UserInDB = Depends(get_current_user)):
-    check_permission(current_user, "kb.manage_docs")
+@router.get("/docs/{audio_id}", response_model=AudioDocDetail)
+def get_audio_doc(
+    audio_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    _require_manage_docs(current_user)
     row = mysql_audio.get_audio_document(audio_id)
     if not row:
         raise HTTPException(status_code=404, detail="audio not found")
     return row
 
-@router.get("/{audio_id}/clip")
+
+@router.get("/query", response_model=AudioSearchResp)
+def query_audio(
+    request: Request,
+    q: str = Query(..., min_length=1),
+    k: int = Query(6, ge=1, le=20),
+    current_user: UserInDB = Depends(get_current_user),) -> AudioSearchResp:
+    allowed_vis = _compute_allowed_visibilities(current_user)
+
+    vs = get_audio_vs()
+    where = {"visibility": {"$in": allowed_vis}}
+
+    try:
+        docs_scores = vs.similarity_search_with_score(q, k=k, filter=where)
+    except TypeError:
+        docs_scores = vs.similarity_search_with_score(q, k=k, where=where)
+
+    hits: list[AudioSearchHit] = []
+    base = _absolute_base(request)
+
+    for doc, score in docs_scores:
+        md = doc.metadata or {}
+        audio_id = str(md.get("audio_id") or "")
+        segment_id = str(md.get("segment_id") or "")
+        start_ms = int(md.get("start_ms") or 0)
+        end_ms = int(md.get("end_ms") or 0)
+        text = (doc.page_content or "").strip()
+
+        if not audio_id or not segment_id:
+            continue
+
+        clip_url = f"{base}/audio/docs/{audio_id}/clip?start_ms={start_ms}&end_ms={end_ms}"
+
+        hits.append(
+            AudioSearchHit(
+                audio_id=audio_id,
+                segment_id=segment_id,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                text=text,
+                score=float(score) if score is not None else None,
+                clip_url=clip_url,
+            )
+        )
+
+    return AudioSearchResp(q=q, k=k, allowed_visibilities=allowed_vis, hits=hits)
+
+
+@router.get("/docs/{audio_id}/clip")
 def get_audio_clip(
     audio_id: str,
     background_tasks: BackgroundTasks,
     start_ms: Optional[int] = Query(default=None, ge=0),
     end_ms: Optional[int] = Query(default=None, ge=0),
-    segment_id: Optional[str] = Query(default=None),  # e.g. aud-xxxx:3
-    current_user: UserInDB = Depends(get_current_user),
-):
-    """
-    返回裁剪后的mp3片段，优先segment_id（从DB取 start/end），否则必须提供 start_ms + end_ms
-    """
-    # 1) 读取 audio doc
-    row = mysql_audio.get_audio_document(audio_id)
-    if not row:
+    segment_id: Optional[str] = Query(default=None),  # e.g. aud-xxx:3
+    current_user: UserInDB = Depends(get_current_user),):
+    doc = mysql_audio.get_audio_document(audio_id)
+    if not doc:
         raise HTTPException(status_code=404, detail="audio not found")
 
-    # 2) 可见性校验：audio_documents.visibility 必须在allowed中
-    allowed = compute_allowed_kb_visibilities(current_user)
-    allowed = ["public"]
-    doc_vis = (row.get("visibility") or "").strip().lower()
-    if doc_vis not in set(allowed):
-        raise HTTPException(status_code=403, detail="no permission to access this audio")
+    _ensure_can_access_visibility(current_user, doc.get("visibility") or "")
 
-    # 3) 确定裁剪区间
     if segment_id:
         if ":" not in segment_id:
             raise HTTPException(status_code=400, detail="invalid segment_id format")
@@ -215,26 +302,26 @@ def get_audio_clip(
 
         start_ms = int(seg["start_ms"])
         end_ms = int(seg["end_ms"])
-    else:  # 如果没有提供segment_id就必须提供开始和结束时间，可以剪辑任意范围内的音频，如果都没提供出异常
+    else:
         if start_ms is None or end_ms is None:
-            raise HTTPException(status_code=400, detail="start_ms and end_ms are required when segment_id is not provided")
+            raise HTTPException(
+                status_code=400,
+                detail="start_ms and end_ms are required when segment_id is not provided",
+            )
 
-    # 4) 合法性限制（防止一次裁太长）
     if end_ms <= start_ms:
         raise HTTPException(status_code=400, detail="end_ms must be greater than start_ms")
-    max_clip_ms = 5 * 60 * 1000  # 5 分钟上限（你可以改）
+
+    max_clip_ms = 5 * 60 * 1000
     if (end_ms - start_ms) > max_clip_ms:
         raise HTTPException(status_code=400, detail="clip too long")
 
-    # 5) 源文件路径（v0 我们从 raw stored_path 裁剪，兼容各种格式）
-    src_path = Path(row["stored_path"])
+    src_path = Path(doc["stored_path"])
     if not src_path.exists():
         raise HTTPException(status_code=404, detail="stored audio file missing")
 
-    # 6) 生成 clip 文件
     CLIP_DIR.mkdir(parents=True, exist_ok=True)
     clip_name = f"{audio_id}_{start_ms}_{end_ms}_{uuid.uuid4().hex[:8]}.mp3"
-    # 以后担心文件重名一般就是年月日时分秒毫秒+uuid
     clip_path = CLIP_DIR / clip_name
 
     try:
@@ -247,7 +334,6 @@ def get_audio_clip(
     except Exception:
         raise HTTPException(status_code=500, detail="failed to generate clip")
 
-    # 7) 返回并后台删除临时文件
     background_tasks.add_task(lambda p=str(clip_path): Path(p).unlink(missing_ok=True))
 
     return FileResponse(
@@ -255,4 +341,3 @@ def get_audio_clip(
         media_type="audio/mpeg",
         filename=clip_name,
     )
-

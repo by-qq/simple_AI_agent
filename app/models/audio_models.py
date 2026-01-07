@@ -52,3 +52,28 @@ class FileResponse(BaseModel):
     media_type: str
     filename: str
 
+class AudioIngestAsyncResp(BaseModel):
+    job_id : Optional[str] = None
+    audio_id: Optional[str] = None
+    stored_as: Optional[str] = None
+    visibility: Optional[str] = None
+    celery_task_id: Optional[str] = None
+    status_url:  Optional[str] = None
+    duration_ms: Optional[int] = None
+    language: Optional[str] = None
+    segments: Optional[int] = None
+
+class AudioJobResp(BaseModel):
+    job_id: Optional[str] = None
+    audio_id: Optional[str] = None
+    celery_task_id: Optional[str] = None
+    status: Optional[str] = None
+    progress: Optional[int] = None
+    message: Optional[str] = None
+    cancel_requested: Optional[int] = None
+    overwrite: Optional[int] = None
+    delete_old_file: Optional[int] = None
+    old_stored_path: Optional[str] = None
+    cancelled_at: Optional[str] = None
+    created_at:datetime
+    updated_at: datetime

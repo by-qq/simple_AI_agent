@@ -12,6 +12,9 @@ def get_collection():
     client = get_client()
     return client.get_or_create_collection(settings.collection_name)
 
+def get_audio_collection():
+    client = get_client()
+    return client.get_or_create_collection(settings.audio_collection_name)
 
 def delete_by_doc_id(doc_id: str) -> int:
     # chromadb特有的api用来按照doc_id删除其中的一个文档
@@ -57,7 +60,7 @@ def update_visibility_by_doc_id(doc_id: str, visibility: str) -> int:
     return len(ids)
 
 def delete_by_audio_id(audio_id: str) -> int:
-    col = get_collection()
+    col = get_audio_collection()
     try:
         before = col.count()
         col.delete(where={"audio_id": audio_id})

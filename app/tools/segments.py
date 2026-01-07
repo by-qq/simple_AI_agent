@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List
 
-from app.ingestion.asr import ASRSegment
+from app.tools.asr import ASRSegment
 
 
 @dataclass
