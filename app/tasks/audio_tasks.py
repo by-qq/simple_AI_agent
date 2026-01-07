@@ -40,9 +40,30 @@ def audio_ingest_task(self, job_id: str, audio_id: str):
     if not doc:
         raise RuntimeError("audio_document not found")
 
-    raw_path = Path(doc["stored_path"])
-    if not raw_path.exists():   # 存储路径不存在也抛出异常
-        raise RuntimeError("stored audio file missing")
+    stored_path = doc["stored_path"]
+    raw_path = Path(stored_path)
+    if not raw_path.exists():
+        print(f"File not found at: {raw_path}")
+        print(f"Current working directory: {Path.cwd()}")
+
+        # 尝试在app目录下查找
+        app_dir = Path(__file__).parent.parent  # 根据你的文件结构调整
+        possible_paths = [
+            raw_path,  # 原始路径
+            app_dir / stored_path,  # app目录下的路径
+            # Path("app") / stored_path,  # 相对app目录
+            # Path("/home/by/PyCharmMiscProject/app") / stored_path,  # 绝对路径
+        ]
+
+        for test_path in possible_paths:
+            print(f"Testing path: {test_path} - exists: {test_path.exists()}")
+            if test_path.exists():
+                raw_path = test_path
+                print(f"Found file at: {raw_path}")
+                break
+
+    if not raw_path.exists():
+        raise RuntimeError(f"stored audio file missing. Checked: {stored_path}")
 
     mysql_audio_job.update_job(job_id, progress=5, message="cleaning old vectors")
     delete_by_audio_id(audio_id)    # 清空音频文档向量数据库中这个音频id相关的内容

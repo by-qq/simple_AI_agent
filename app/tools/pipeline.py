@@ -379,6 +379,7 @@ def run_audio_ingest_pipeline(
         ids.append(seg_id)
 
     _prog(on_progress, 90, "write db segments")
+    print("write db segments")
     _db_replace_segments(audio_id, rows)
 
     _prog(on_progress, 93, "write vectors")

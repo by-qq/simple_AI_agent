@@ -67,7 +67,6 @@ async def ingest_audio(
     overwrite: bool = Form(False),
     delete_old_file: bool = Form(False),
     current_user: UserInDB = Depends(get_current_user),):
-
     _require_manage_docs(current_user)
 
     if not file.filename:
@@ -95,62 +94,6 @@ async def ingest_audio(
         raise HTTPException(status_code=400, detail="Empty file")
     raw_path.write_bytes(raw_bytes)
 
-    # 2) 转码到 16k mono wav
-    AUDIO_WAV_DIR.mkdir(parents=True, exist_ok=True)
-    wav_path = AUDIO_WAV_DIR / f"{audio_id}.wav"
-    transcode_to_wav_16k_mono(raw_path, wav_path)
-
-    # 3) 时长
-    duration_ms = ffprobe_duration_ms(wav_path)
-
-    # 4) ASR
-    asr = ASR(model_name="base", device="cpu", compute_type="int8")
-    asr_segs, detected_lang = asr.transcribe(str(wav_path), language=language)
-    lang = language or detected_lang
-
-    # 5) 切成更适合检索的 chunks
-    chunks = merge_by_max_duration(asr_segs, max_ms=25_000, min_ms=6_000)
-
-    # 6) 写 Chroma（文本 embedding）
-
-    vs = get_audio_vs()
-
-    docs: list[Document] = []
-    segment_rows: list[dict] = []
-    for idx, c in enumerate(chunks):
-        seg_id = f"{audio_id}:{idx}"
-        text = c.text.strip()
-        if not text:
-            continue
-
-        meta = {
-            "doc_type": "audio",
-            "audio_id": audio_id,
-            "segment_id": seg_id,
-            "segment_idx": idx,
-            "start_ms": c.start_ms,
-            "end_ms": c.end_ms,
-            "visibility": visibility,
-            "original_filename": file.filename,
-            "stored_path": str(raw_path),
-            "wav_path": str(wav_path),
-            "language": lang,
-        }
-        docs.append(Document(page_content=text, metadata=meta))
-        segment_rows.append(
-            {"segment_idx": idx, "start_ms": c.start_ms, "end_ms": c.end_ms, "text": text}
-        )
-
-    if not docs:
-        raise HTTPException(status_code=400, detail="No transcript produced")
-
-    vs.add_documents(docs)
-    try:
-        vs.persist()
-    except Exception:
-        pass
-
-    # 7) 落库
     mysql_audio.upsert_audio_document(
         audio_id=audio_id,
         original_filename=file.filename,
