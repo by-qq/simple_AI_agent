@@ -65,9 +65,11 @@ def _run(cmd: List[str]) -> None:
 
 def transcode_to_wav_16k_mono(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
+    print(dst)
+    print(dst.parent)
     _run([
         "/home/by/下载/ffmpeg-master-latest-linux64-gpl.tar/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg",
-        "-y",
+        "-y",                   # 覆盖输出文件
         "-i", str(src),
         "-ac", str(TARGET_CH),
         "-ar", str(TARGET_SR),
@@ -82,8 +84,8 @@ def ffprobe_duration_ms(path: Path) -> int:
          "-v",     "error",
          "-show_entries",       "format=duration",
          "-of", "json", str(path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,     # 捕获标准输出
+        stderr=subprocess.PIPE,     # 捕获错误输出
         text=True,
     )
     if p.returncode != 0:
@@ -92,7 +94,7 @@ def ffprobe_duration_ms(path: Path) -> int:
     dur = float((data.get("format") or {}).get("duration") or 0.0)
     return int(dur * 1000)
 
-def _read_wav_mono_16k(path: Path) -> np.ndarray:
+def _read_wav_mono_16k(path: Path) -> np.ndarray:       # todo 小重点 返回numpy数组是为什么
     x, sr = sf.read(str(path), dtype="float32", always_2d=False)
     if sr != TARGET_SR:
         raise RuntimeError(f"wav sample rate not {TARGET_SR}: {sr}")
@@ -225,13 +227,14 @@ def transcribe_segments(
     out.sort(key=lambda t: (t.start_ms, t.end_ms))
     return out
 
-def _ends_with_punct(t: str) -> bool:
+def _ends_with_punct(t: str) -> bool: # 音频是否以某个标点作为结尾
     t = (t or "").strip()
     if not t:
         return False
     return t[-1] in PUNCT_END
 
-
+# 每一个小的ASR（经过VAD）得到小的段，这个段落中包含该段的开始/结束时间，还有这一段的文字
+# 该函数就是将小块合并成大块，这段可能会被问（怎么用VAD进行切割的，切割出来有什么，怎么控制在25秒之内，内容怎么控制在900个字中）
 def merge_asr_to_chunks(asr: List[AsrSeg]) -> List[AsrSeg]:
     if not asr:
         return []
@@ -239,7 +242,7 @@ def merge_asr_to_chunks(asr: List[AsrSeg]) -> List[AsrSeg]:
     chunks: List[AsrSeg] = []
     cur_start = asr[0].start_ms # 第一个分段开始
     cur_end = asr[0].end_ms     # 第一个分段结束
-    buf: List[str] = [asr[0].text]  # 缓冲文本
+    buf: List[str] = [asr[0].text]  # 缓冲文本，不断的拼接
 
     def flush(force: bool = False) -> None:     # 负责将缓冲区内容输出为一个AsrSeg块
         nonlocal cur_start, cur_end, buf
@@ -330,7 +333,6 @@ def run_audio_ingest_pipeline(
 
     _prog(on_progress, 5, "transcoding")
     transcode_to_wav_16k_mono(raw_path, wav_path)
-
     duration_ms = ffprobe_duration_ms(wav_path)
 
     # 从音频中检测出包含语音的片段
@@ -379,7 +381,6 @@ def run_audio_ingest_pipeline(
         ids.append(seg_id)
 
     _prog(on_progress, 90, "write db segments")
-    print("write db segments")
     _db_replace_segments(audio_id, rows)
 
     _prog(on_progress, 93, "write vectors")

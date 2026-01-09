@@ -1,22 +1,18 @@
 from __future__ import annotations
 
+import os
 import time, uuid
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile,)
 from fastapi.responses import FileResponse
-from langchain_core.documents import Document
 
 from app.api.auth_api import UserInDB, get_current_user
 from app.config import settings
 from app.db import mysql_audio, mysql_audio_job
 from app.deps import get_audio_vs
-from app.tools.asr import ASR
-from app.tools.audio_loader import ffprobe_duration_ms
 from app.tools.audio_clip import clip_audio_to_mp3
-from app.tools.pipeline import transcode_to_wav_16k_mono
-from app.tools.segments import merge_by_max_duration
 from app.models.audio_models import AudioDocDetail, AudioSearchResp, AudioSearchHit, AudioIngestAsyncResp, AudioJobResp
 from app.security.rbac.perms import check_permission, allowed_kb_visibilities
 from app.tasks.audio_tasks import audio_ingest_task
@@ -24,7 +20,6 @@ from app.tasks.audio_tasks import audio_ingest_task
 router = APIRouter(prefix="/audio", tags=["audio"])
 
 AUDIO_DIR = Path(getattr(settings, "audio_dir", "data/audio"))
-AUDIO_WAV_DIR = Path("data/audio_wav")
 CLIP_DIR = Path(getattr(settings, "audio_clip_dir", "data/audio_clips"))
 
 def _require_manage_docs(user: UserInDB) -> None:
@@ -53,7 +48,7 @@ def _ensure_can_access_visibility(user: UserInDB, doc_visibility: str) -> List[s
         raise HTTPException(status_code=403, detail="no permission to access this audio")
     return allowed
 
-
+# 取整个项目的超链接
 def _absolute_base(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
@@ -195,7 +190,7 @@ def query_audio(
         text = (doc.page_content or "").strip()
 
         if not audio_id or not segment_id:
-            continue
+            continue    # mysql和chroma中的数据不匹配
 
         clip_url = f"{base}/audio/docs/{audio_id}/clip?start_ms={start_ms}&end_ms={end_ms}"
 
@@ -217,7 +212,7 @@ def query_audio(
 @router.get("/docs/{audio_id}/clip")
 def get_audio_clip(
     audio_id: str,
-    background_tasks: BackgroundTasks,
+    background_tasks: BackgroundTasks,      # FASTapi提供的小功能，和多线程不一样（可能会占据当前线程，也可能是后台任务），可以被当作轻量级的多线程，
     start_ms: Optional[int] = Query(default=None, ge=0),
     end_ms: Optional[int] = Query(default=None, ge=0),
     segment_id: Optional[str] = Query(default=None),  # e.g. aud-xxx:3

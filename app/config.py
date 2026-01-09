@@ -56,7 +56,7 @@ class Settings(BaseModel):
     celery_audio_queue: str = "audio"  # 消息队列的名字
 
     audio_dir: str = "data/audio"
-    audio_wav_dir: str = "data/audio_wav"
+    audio_wav_dir: str = "app/data/audio_wav"
     audio_clip_dir: str = "data/audio_clips"
 
 settings = Settings()
