@@ -121,3 +121,59 @@ def insert_audio_segments_bulk(audio_id:str ,rows: list[dict[str, Any]]) -> None
                     for r in rows
                 ],
             )
+
+def list_audio_segments(audio_id: str) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT audio_id, segment_idx, start_ms, end_ms, text "
+                "FROM audio_segments WHERE audio_id=%s ORDER BY segment_idx ASC",
+                (audio_id,),
+            )
+            return list(cur.fetchall() or [])
+
+
+def get_audio_transcript(audio_id: str) -> dict[str, Any]:
+    segs = list_audio_segments(audio_id)
+    lines: list[str] = []
+    for s in segs:
+        t = (s.get("text") or "").strip()
+        if t:
+            lines.append(t)
+    return {
+        "audio_id": audio_id,
+        "segment_count": len(segs),
+        "transcript": "\n".join(lines),
+    }
+
+
+def update_audio_visibility(audio_id: str, visibility: str) -> int:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE audio_documents SET visibility=%s WHERE audio_id=%s",
+                (visibility, audio_id),
+            )
+            return int(cur.rowcount or 0)
+
+
+def delete_audio_document_cascade(audio_id: str) -> dict[str, int]:
+    """
+    Delete DB rows for this audio_id.
+    (vectors/files are handled elsewhere)
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM audio_segments WHERE audio_id=%s", (audio_id,))
+            seg_n = int(cur.rowcount or 0)
+
+            try:
+                cur.execute("DELETE FROM audio_jobs WHERE audio_id=%s", (audio_id,))
+                job_n = int(cur.rowcount or 0)
+            except Exception:
+                job_n = 0
+
+            cur.execute("DELETE FROM audio_documents WHERE audio_id=%s", (audio_id,))
+            doc_n = int(cur.rowcount or 0)
+
+    return {"documents": doc_n, "segments": seg_n, "jobs": job_n}

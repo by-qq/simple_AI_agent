@@ -77,3 +77,25 @@ class AudioJobResp(BaseModel):
     cancelled_at: Optional[str] = None
     created_at:datetime
     updated_at: datetime
+
+class AudioCitation(BaseModel):
+    audio_id: str
+    segment_id: str
+    start_ms: int
+    end_ms: int
+    text: str
+    clip_url: Optional[str] = None
+    score: float
+
+class AudioAskResp(BaseModel):
+    question: str
+    answer: str
+    citations: List[str]
+
+class AudioAskReq(BaseModel):
+    question: str
+    k: int
+    audio_id: str
+    system_prompt:Optional[str] = None
+
+
