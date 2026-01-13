@@ -78,12 +78,18 @@ def list_audio_segments(audio_id: str, *, limit: int = 2000) -> list[dict[str, A
             return cur.fetchall() or []
 
 
-def get_audio_transcript(audio_id: str, *, max_segments: int = 5000) -> str:
+def get_audio_transcript(audio_id: str, *, max_segments: int = 5000) -> dict[str, Any]:
     segs = list_audio_segments(audio_id, limit=max_segments)
     lines: list[str] = []
     for s in segs:
-        lines.append(f"[{s['segment_idx']}] {s['text']}")
-    return "\n".join(lines)
+        t = (s.get("text") or "").strip()
+        if t:
+            lines.append(t)
+    return {
+        "audio_id": audio_id,
+        "segment_count": len(segs),
+        "transcript": "\n".join(lines),
+    }
 
 
 def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
@@ -226,3 +232,27 @@ def insert_audio_segments_bulk(audio_id:str ,rows: list[dict[str, Any]]) -> None
                     for r in rows
                 ],
             )
+
+def delete_audio_document_cascade(audio_id: str) -> dict[str, int]:
+    """
+    Delete DB rows for this audio_id.
+    (vectors/files are handled elsewhere)
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM audio_segments WHERE audio_id=%s", (audio_id,))
+            seg_n = int(cur.rowcount or 0)
+
+            # 如果你有 audio_jobs 表对 audio_id 关联，这里顺便清
+            try:
+                cur.execute("DELETE FROM audio_jobs WHERE audio_id=%s", (audio_id,))
+                job_n = int(cur.rowcount or 0)
+            except Exception:
+                job_n = 0
+
+            cur.execute("DELETE FROM audio_documents WHERE audio_id=%s", (audio_id,))
+            doc_n = int(cur.rowcount or 0)
+
+    return {"documents": doc_n, "segments": seg_n, "jobs": job_n}
+
+

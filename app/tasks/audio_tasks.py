@@ -102,3 +102,53 @@ def audio_ingest_task(self, job_id: str, audio_id: str):
 
     return res
 
+@celery_app.task(
+    name="app.tasks.audio_tasks.audio_reindex_task",
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 2},
+)
+def audio_reindex_task(self, job_id: str, audio_id: str):
+    mysql_audio_job.update_job(job_id, status="running", progress=1, message="starting reindex")
+    mysql_audio.update_audio_status(audio_id, status="running")
+
+    _check_cancel(job_id)
+
+    doc = mysql_audio.get_audio_document(audio_id)
+    if not doc:
+        raise RuntimeError("audio_document not found")
+
+    raw_path = Path(doc["stored_path"])
+    if not raw_path.exists():
+        raise RuntimeError("stored audio file missing")
+
+    mysql_audio_job.update_job(job_id, progress=5, message="cleaning old vectors")
+    delete_by_audio_id(audio_id)
+
+    _check_cancel(job_id)
+
+    mysql_audio_job.update_job(job_id, progress=10, message="transcribing/indexing")
+    res = run_audio_ingest_pipeline(
+        audio_id=audio_id,
+        raw_path=raw_path,
+        original_filename=doc["original_filename"],
+        visibility=doc["visibility"],
+        language=doc.get("language"),
+        wav_dir=Path(settings.audio_wav_dir),
+    )
+
+    _check_cancel(job_id)
+
+    mysql_audio.update_audio_indexed(
+        audio_id=audio_id,
+        duration_ms=int(res["duration_ms"]),
+        language=res.get("language"),
+        segment_count=int(res["segments"]),
+        status="indexed",
+    )
+
+    mysql_audio_job.update_job(job_id, status="succeeded", progress=100, message=f"reindexed {res['segments']} segments")
+    return res
+

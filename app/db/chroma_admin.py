@@ -14,21 +14,23 @@ client = lru_cache(maxsize=1)(get_client)
 def get_collection():
     return client().get_or_create_collection(settings.collection_name)
 
+def delete_collection_by_name(name: str) -> None:
+    client().delete_collection(name=name)
+
+def delete_where_and_count(col, where: dict[str, Any]) -> int:
+    try:
+        got = col.get(where=where)
+        ids = got.get("ids") or []
+        if ids:
+            col.delete(ids=ids)
+        return int(len(ids))
+    except Exception:
+        return 0
 
 def delete_by_doc_id(doc_id: str) -> int:
     # chromadb特有的api用来按照doc_id删除其中的一个文档
     col = get_collection()  # 这个函数用于获取我向量数据中集合的名字
-    try:
-        before = col.count()
-        col.delete(where={"doc_id": doc_id})
-        after = col.count()
-        return max(0, int(before - after))
-    except Exception:
-        got = col.get(where={"doc_id": doc_id})
-        ids = got.get("ids") or []
-        if ids:
-            col.delete(ids=ids)
-        return len(ids)
+    return delete_where_and_count(col, {"doc_id": doc_id})
 
 
 def get_ids_and_metadatas_by_doc_id(doc_id: str) -> tuple[list[str], list[dict[str, Any]]]:
@@ -59,10 +61,7 @@ def update_visibility_by_doc_id(doc_id: str, visibility: str) -> int:
     return len(ids)
 
 def reset_kb_collection() -> None:
-    try:
-        client().delete_collection(settings.collection_name)
-    except Exception:
-        pass
+    delete_collection_by_name(settings.collection_name)
     get_collection.cache_clear()
     get_collection()
 
@@ -71,19 +70,16 @@ def reset_kb_collection() -> None:
 def get_audio_collection():
     return client().get_or_create_collection(settings.audio_collection_name)
 
+def get_ids_and_metadatas_by_audio_id(audio_id: str) -> tuple[list[str], list[dict[str, Any]]]:
+    col = get_audio_collection()
+    got = col.get(where={"audio_id": audio_id}, include=["metadatas"])
+    ids = got.get("ids") or []
+    metas = got.get("metadatas") or []
+    return list(ids), list(metas)
+
 def delete_by_audio_id(audio_id: str) -> int:
     col = get_audio_collection()
-    try:
-        before = col.count()
-        col.delete(where={"audio_id": audio_id})
-        after = col.count()
-        return max(0, int(before - after))
-    except Exception:
-        got = col.get(where={"audio_id": audio_id})
-        ids = got.get("ids") or []
-        if ids:
-            col.delete(ids=ids)
-        return len(ids)
+    return delete_where_and_count(col,{"audio_id": audio_id})
 
 def update_visibility_by_audio_id(audio_id: str, visibility: str) -> int:
     col = get_audio_collection()
@@ -112,9 +108,6 @@ def delete_many_audio_ids(audio_ids: Iterable[str]) -> dict[str, int]:
     return out
 
 def reset_audio_collection() -> None:
-    try:
-        client().delete_collection(settings.audio_collection_name)
-    except Exception:
-        pass
+    delete_collection_by_name(settings.audio_collection_name)
     get_audio_collection.cache_clear()
     get_audio_collection()
