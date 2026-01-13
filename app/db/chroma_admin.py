@@ -3,18 +3,17 @@
 
 from __future__ import annotations
 
-from typing import Any
+from functools import lru_cache
+from typing import Any, Iterable
 from app.config import settings
 from app.db.vectorstore import get_client
 
 
+client = lru_cache(maxsize=1)(get_client)
+@lru_cache(maxsize=8)
 def get_collection():
-    client = get_client()
-    return client.get_or_create_collection(settings.collection_name)
+    return client().get_or_create_collection(settings.collection_name)
 
-def get_audio_collection():
-    client = get_client()
-    return client.get_or_create_collection(settings.audio_collection_name)
 
 def delete_by_doc_id(doc_id: str) -> int:
     # chromadb特有的api用来按照doc_id删除其中的一个文档
@@ -59,6 +58,19 @@ def update_visibility_by_doc_id(doc_id: str, visibility: str) -> int:
     col.update(ids=ids, metadatas=new_metas)
     return len(ids)
 
+def reset_kb_collection() -> None:
+    try:
+        client().delete_collection(settings.collection_name)
+    except Exception:
+        pass
+    get_collection.cache_clear()
+    get_collection()
+
+
+@lru_cache(maxsize=8)
+def get_audio_collection():
+    return client().get_or_create_collection(settings.audio_collection_name)
+
 def delete_by_audio_id(audio_id: str) -> int:
     col = get_audio_collection()
     try:
@@ -72,3 +84,37 @@ def delete_by_audio_id(audio_id: str) -> int:
         if ids:
             col.delete(ids=ids)
         return len(ids)
+
+def update_visibility_by_audio_id(audio_id: str, visibility: str) -> int:
+    col = get_audio_collection()
+    got = col.get(where={"audio_id": audio_id}, include=["metadatas"])
+    ids = got.get("ids") or []
+    metas = got.get("metadatas") or []
+    if not ids:
+        return 0
+    new_metas: list[dict[str, Any]] = []
+    for m in metas:
+        mm = dict(m or {})
+        mm["visibility"] = visibility
+        new_metas.append(mm)
+    col.update(ids=ids, metadatas=new_metas)
+    return len(ids)
+
+
+
+def delete_many_audio_ids(audio_ids: Iterable[str]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for aid in audio_ids:
+        aid = (aid or "").strip()
+        if not aid:
+            continue
+        out[aid] = delete_by_audio_id(aid)
+    return out
+
+def reset_audio_collection() -> None:
+    try:
+        client().delete_collection(settings.audio_collection_name)
+    except Exception:
+        pass
+    get_audio_collection.cache_clear()
+    get_audio_collection()

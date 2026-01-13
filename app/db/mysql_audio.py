@@ -46,6 +46,13 @@ def upsert_audio_document(
             )
 
 
+
+def update_audio_visibility(audio_id: str, visibility: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE audio_documents SET visibility=%s WHERE audio_id=%s", (visibility, audio_id))
+
+
 def replace_audio_segments(audio_id: str, segments: list[dict[str, Any]]) -> None:
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -59,6 +66,25 @@ def replace_audio_segments(audio_id: str, segments: list[dict[str, Any]]) -> Non
                     ],
                 )
 
+def list_audio_segments(audio_id: str, *, limit: int = 2000) -> list[dict[str, Any]]:
+    limit = max(1, min(int(limit), 5000))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT audio_id, segment_idx, start_ms, end_ms, text "
+                "FROM audio_segments WHERE audio_id=%s ORDER BY segment_idx ASC LIMIT %s",
+                (audio_id, limit),
+            )
+            return cur.fetchall() or []
+
+
+def get_audio_transcript(audio_id: str, *, max_segments: int = 5000) -> str:
+    segs = list_audio_segments(audio_id, limit=max_segments)
+    lines: list[str] = []
+    for s in segs:
+        lines.append(f"[{s['segment_idx']}] {s['text']}")
+    return "\n".join(lines)
+
 
 def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
     with get_conn() as conn:
@@ -70,6 +96,85 @@ def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
                 (audio_id,),
             )
             return cur.fetchone()
+
+def delete_audio_document(audio_id: str) -> int:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM audio_documents WHERE audio_id=%s", (audio_id,))
+            return int(cur.rowcount or 0)
+
+
+def list_audio_documents(
+    *,
+    q: str | None = None,
+    visibility: str | None = None,
+    status: str | None = None,
+    uploader_user_id: int | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[int, list[dict[str, Any]]]:
+    page = max(1, int(page))
+    page_size = max(1, min(int(page_size), 100))
+    offset = (page - 1) * page_size
+
+    where = []
+    params: list[Any] = []
+
+    if q:
+        qq = f"%{q.strip()}%"
+        where.append("(audio_id LIKE %s OR original_filename LIKE %s OR uploader_username LIKE %s)")
+        params.extend([qq, qq, qq])
+
+    if visibility:
+        v = visibility.strip().lower()
+        where.append("visibility=%s")
+        params.append(v)
+
+    if status:
+        s = status.strip().lower()
+        where.append("status=%s")
+        params.append(s)
+
+    if uploader_user_id is not None:
+        where.append("uploader_user_id=%s")
+        params.append(int(uploader_user_id))
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) AS cnt FROM audio_documents {where_sql}", tuple(params))
+            total = int((cur.fetchone() or {}).get("cnt") or 0)
+
+            cur.execute(
+                "SELECT audio_id, original_filename, stored_path, duration_ms, language, visibility, status, "
+                "uploader_user_id, uploader_username, segment_count, created_at, updated_at "
+                f"FROM audio_documents {where_sql} "
+                "ORDER BY updated_at DESC, created_at DESC "
+                "LIMIT %s OFFSET %s",
+                tuple(params + [page_size, offset]),
+            )
+            items = cur.fetchall() or []
+
+    return total, items
+
+
+def audio_stats() -> dict[str, Any]:
+    out = {"by_visibility": {}, "by_status": {}, "total": 0}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS cnt FROM audio_documents")
+            out["total"] = int((cur.fetchone() or {}).get("cnt") or 0)
+
+            cur.execute("SELECT visibility, COUNT(*) AS cnt FROM audio_documents GROUP BY visibility")
+            for r in (cur.fetchall() or []):
+                out["by_visibility"][str(r["visibility"])] = int(r["cnt"])
+
+            cur.execute("SELECT status, COUNT(*) AS cnt FROM audio_documents GROUP BY status")
+            for r in (cur.fetchall() or []):
+                out["by_status"][str(r["status"])] = int(r["cnt"])
+
+    return out
 
 def get_audio_segment(audio_id: str, segment_idx: int):
     with get_conn() as conn:
