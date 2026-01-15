@@ -13,6 +13,7 @@ from faster_whisper import WhisperModel
 from langchain_core.documents import Document
 
 from app.db import mysql_audio
+from app.db.es_audio_admin import upsert_audio_segments
 from app.deps import get_audio_vs
 
 ProgressFn = Callable[[int, str], None]
@@ -386,6 +387,14 @@ def run_audio_ingest_pipeline(
     _prog(on_progress, 93, "write vectors")
     vs = get_audio_vs()
     _vs_add(vs, docs, ids)
+
+    _prog(on_progress, 96, "write es index")
+    try:
+        upsert_audio_segments(audio_id=audio_id, rows=rows)
+    except Exception as e:
+        # ES失败不应阻塞向量入库
+        print(f"[warn] es upsert failed: {e}")
+
 
     _prog(on_progress, 100, "done")
 

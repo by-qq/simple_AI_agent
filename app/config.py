@@ -59,4 +59,17 @@ class Settings(BaseModel):
     audio_wav_dir: str = "app/data/audio_wav"
     audio_clip_dir: str = "data/audio_clips"
 
+    es_url: str = os.getenv("ES_URL", "http://127.0.0.1:9200")
+    es_audio_index: str = os.getenv("ES_AUDIO_INDEX", "audio_segments_v1")
+
+    audio_hybrid_top_v: int = int(os.getenv("AUDIO_HYBRID_TOP_V", "50"))
+    audio_hybrid_top_b: int = int(os.getenv("AUDIO_HYBRID_TOP_B", "50"))
+    audio_hybrid_top_n_rerank: int = int(os.getenv("AUDIO_HYBRID_TOP_N_RERANK", "30"))
+    audio_rrf_k0: int = int(os.getenv("AUDIO_RRF_K0", "60"))
+
+    audio_rerank_model: str = os.getenv("AUDIO_RERANK_MODEL", "BAAI/bge-reranker-base")
+    audio_rerank_batch_size: int = int(os.getenv("AUDIO_RERANK_BATCH_SIZE", "16"))
+    audio_rerank_max_len: int = int(os.getenv("AUDIO_RERANK_MAX_LEN", "512"))
+    audio_rerank_min_score: float = float(os.getenv("AUDIO_RERANK_MIN_SCORE", "-1e9"))
+
 settings = Settings()
